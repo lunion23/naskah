@@ -33,6 +33,7 @@ Contoh scripts.json:
 import asyncio
 import json
 import os
+import random
 import re
 import sys
 from pathlib import Path
@@ -49,6 +50,8 @@ from moviepy.editor import (
     concatenate_audioclips,
     concatenate_videoclips,
 )
+from moviepy.audio.AudioClip import AudioArrayClip, CompositeAudioClip
+from moviepy.audio.fx import all as afx
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- KONFIGURASI ----------------
@@ -60,6 +63,14 @@ PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")   # alternatif jika Pexels ti
 MAX_CLIP_SECONDS = 5            # tiap potongan video stok maksimal sekian detik
 FONT_SIZE = 78
 SUB_Y = 1150                    # posisi vertikal subtitle
+SUB_STYLE = "karaoke"           # "karaoke" = kata yang sedang diucapkan menyala, "plain" = satu kalimat utuh
+WORDS_PER_CHUNK = 3             # jumlah kata yang tampil sekaligus (gaya karaoke)
+COLOR_ACTIVE = (255, 214, 10, 255)   # kuning untuk kata yang sedang diucapkan
+COLOR_NORMAL = (255, 255, 255, 255)  # putih untuk kata lainnya
+POP_EFFECT = True               # teks "membal" sebentar setiap potongan kata baru muncul
+MUSIC = True                    # musik latar tipis di bawah suara
+MUSIC_VOLUME = 0.12             # 0.0 - 1.0 (lebih kecil = lebih pelan)
+MUSIC_DIR = Path("music")       # taruh file .mp3/.wav bebas hak cipta di sini; jika kosong dibuat musik ambient otomatis
 FONT_CANDIDATES = [
     os.getenv("FONT_PATH", ""),
     "C:/Windows/Fonts/arialbd.ttf",
@@ -93,17 +104,30 @@ def load_font(size: int):
 
 # ---------------- 1. SUARA ----------------
 async def _tts(text: str, path: Path):
-    await edge_tts.Communicate(text, VOICE, rate=RATE).save(str(path))
+    """Simpan suara ke path dan kembalikan waktu tiap kata [(mulai, selesai), ...] dalam detik."""
+    try:
+        comm = edge_tts.Communicate(text, VOICE, rate=RATE, boundary="WordBoundary")
+    except TypeError:  # edge-tts versi lama tidak punya parameter boundary
+        comm = edge_tts.Communicate(text, VOICE, rate=RATE)
+    marks = []
+    with open(path, "wb") as f:
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                a = chunk["offset"] / 1e7
+                marks.append((a, a + chunk["duration"] / 1e7))
+    return marks
 
 
 def make_voice(sentences, workdir: Path):
-    """Satu file audio per kalimat supaya durasi subtitle akurat."""
-    paths = []
+    """Satu file audio per kalimat supaya durasi subtitle akurat. Mengembalikan (paths, marks)."""
+    paths, all_marks = [], []
     for i, s in enumerate(sentences):
         p = workdir / f"s{i:02d}.mp3"
-        asyncio.run(_tts(s, p))
+        all_marks.append(asyncio.run(_tts(s, p)))
         paths.append(p)
-    return paths
+    return paths, all_marks
 
 
 # ---------------- 2. VISUAL ----------------
@@ -233,6 +257,153 @@ def render_subtitle(text: str) -> np.ndarray:
     return np.array(img)
 
 
+def word_timings(sentence: str, marks, duration: float):
+    """Waktu tampil tiap kata: [(kata, mulai, selesai), ...] relatif terhadap awal kalimat.
+    Memakai penanda dari Edge TTS jika jumlahnya cocok; jika tidak, dibagi menurut panjang kata."""
+    words = sentence.split()
+    if not words:
+        return []
+    if len(marks) == len(words):
+        starts = [m[0] for m in marks]
+    else:
+        weights = [len(w) + 2 for w in words]  # +2 agar kata pendek tidak terlalu cepat
+        total_w, acc, starts = sum(weights), 0.0, []
+        for w in weights:
+            starts.append(duration * acc / total_w)
+            acc += w
+    starts = [min(st, max(duration - 0.05, 0)) for st in starts]
+    out = []
+    for i, w in enumerate(words):
+        end = starts[i + 1] if i + 1 < len(words) else duration
+        out.append((w, starts[i], max(end, starts[i] + 0.05)))
+    return out
+
+
+def group_chunks(timed_words):
+    """Kelompokkan kata jadi potongan pendek; berhenti di tanda baca."""
+    chunks, cur = [], []
+    for item in timed_words:
+        cur.append(item)
+        if len(cur) >= WORDS_PER_CHUNK or item[0][-1] in ".,!?;:":
+            chunks.append(cur)
+            cur = []
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def render_chunk(words, active: int) -> np.ndarray:
+    """Gambar satu potongan kata; kata ke-`active` diberi warna sorot."""
+    font = load_font(FONT_SIZE)
+    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    space = probe.textlength(" ", font=font)
+    max_w = W - 160
+
+    lines, cur, cur_w = [], [], 0.0
+    for idx, w in enumerate(words):
+        ww = probe.textlength(w, font=font)
+        add = ww if not cur else ww + space
+        if cur and cur_w + add > max_w:
+            lines.append(cur)
+            cur, cur_w, add = [], 0.0, ww
+        cur.append((idx, w, ww))
+        cur_w += add
+    lines.append(cur)
+
+    line_h = FONT_SIZE + 22
+    img = Image.new("RGBA", (W, line_h * len(lines) + 40), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for n, line in enumerate(lines):
+        total = sum(x[2] for x in line) + space * (len(line) - 1)
+        x = (W - total) / 2
+        y = 20 + n * line_h
+        for idx, w, ww in line:
+            d.text(
+                (x, y), w, font=font,
+                fill=COLOR_ACTIVE if idx == active else COLOR_NORMAL,
+                stroke_width=8, stroke_fill=(0, 0, 0, 255),
+            )
+            x += ww + space
+    return np.array(img)
+
+
+def pop_in(clip, y, dur=0.12, amp=0.12):
+    """Teks muncul sedikit lebih besar lalu mengecil ke ukuran normal (efek membal)."""
+    h = clip.h
+
+    def scale(t):
+        return 1 + amp * max(0.0, 1 - t / dur)
+
+    return clip.resize(scale).set_position(
+        lambda t: (int(round(-(scale(t) - 1) * W / 2)), int(round(y - (scale(t) - 1) * h / 2)))
+    )
+
+
+def karaoke_clips(sentences, audio_clips, all_marks):
+    """Buat klip subtitle per kata, disusun mengikuti waktu suara."""
+    clips, t0 = [], 0.0
+    for sentence, ac, marks in zip(sentences, audio_clips, all_marks):
+        timed = word_timings(sentence, marks, ac.duration)
+        for chunk in group_chunks(timed):
+            words = [c[0] for c in chunk]
+            for k, (_, a, b) in enumerate(chunk):
+                c = ImageClip(render_chunk(words, k)).set_start(t0 + a).set_duration(b - a)
+                if k == 0 and POP_EFFECT:
+                    c = pop_in(c, SUB_Y)
+                else:
+                    c = c.set_position((0, SUB_Y))
+                clips.append(c)
+        t0 += ac.duration
+    return clips
+
+
+# ---------------- 3b. MUSIK LATAR ----------------
+def ambient_pad_array(duration: float, sr: int = 44100) -> np.ndarray:
+    """Musik ambient lembut buatan sendiri (bebas hak cipta): progresi Am - F - C - G."""
+    chords = [
+        (110.00, 130.81, 164.81, 220.00),   # Am
+        (87.31, 110.00, 130.81, 174.61),    # F
+        (130.81, 164.81, 196.00, 261.63),   # C
+        (98.00, 123.47, 146.83, 196.00),    # G
+    ]
+    seg = 8.0
+    n = int(duration * sr)
+    t = np.arange(n) / sr
+    out = np.zeros((n, 2), dtype=np.float64)
+    for k in range(int(np.ceil(duration / seg)) + 1):
+        c = (k + 0.5) * seg
+        lo, hi = max(int((c - seg) * sr), 0), min(int((c + seg) * sr), n)
+        if lo >= hi:
+            continue
+        tt = t[lo:hi]
+        w = np.sin(np.pi / 2 * np.clip(1 - np.abs(tt - c) / seg, 0, 1)) ** 2
+        for ch, detune in ((0, 0.998), (1, 1.002)):
+            sig = np.zeros_like(tt)
+            for f in chords[k % 4]:
+                sig += np.sin(2 * np.pi * f * detune * tt) + 0.35 * np.sin(2 * np.pi * 2 * f * detune * tt)
+            out[lo:hi, ch] += sig * w
+    out *= 1 + 0.15 * np.sin(2 * np.pi * 0.2 * t)[:, None]   # tremolo pelan
+    peak = np.max(np.abs(out)) or 1.0
+    return (out / peak * 0.8).astype(np.float32)
+
+
+def make_music(duration: float):
+    files = []
+    if MUSIC_DIR.exists():
+        for ext in ("*.mp3", "*.wav", "*.m4a", "*.ogg"):
+            files += list(MUSIC_DIR.glob(ext))
+    if files:
+        src = AudioFileClip(str(random.choice(files)))
+        clip = src.subclip(0, duration) if src.duration >= duration else src.fx(afx.audio_loop, duration=duration)
+    else:
+        clip = AudioArrayClip(ambient_pad_array(duration), fps=44100)
+    return (
+        clip.fx(afx.volumex, MUSIC_VOLUME)
+        .fx(afx.audio_fadein, 1.0)
+        .fx(afx.audio_fadeout, 1.5)
+    )
+
+
 # ---------------- 4. RAKIT VIDEO ----------------
 def build_video(item: dict, index: int):
     title = item["title"]
@@ -244,7 +415,7 @@ def build_video(item: dict, index: int):
 
     print(f"\n=== [{index}] {title} ===")
     print("• Membuat suara...")
-    audio_paths = make_voice(sentences, workdir)
+    audio_paths, all_marks = make_voice(sentences, workdir)
     audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(audio_clips)
     total = voice.duration + 0.4
@@ -254,19 +425,29 @@ def build_video(item: dict, index: int):
     bg = make_background(fetch_stock_videos(keyword), total)
 
     print("• Menempel subtitle...")
-    subs, t = [], 0.0
-    for sentence, ac in zip(sentences, audio_clips):
-        img = render_subtitle(sentence)
-        sub = (
-            ImageClip(img)
-            .set_start(t)
-            .set_duration(ac.duration)
-            .set_position(("center", SUB_Y))
-        )
-        subs.append(sub)
-        t += ac.duration
+    if SUB_STYLE == "karaoke":
+        subs = karaoke_clips(sentences, audio_clips, all_marks)
+    else:
+        subs, t = [], 0.0
+        for sentence, ac in zip(sentences, audio_clips):
+            sub = (
+                ImageClip(render_subtitle(sentence))
+                .set_start(t)
+                .set_duration(ac.duration)
+                .set_position(("center", SUB_Y))
+            )
+            subs.append(sub)
+            t += ac.duration
 
-    final = CompositeVideoClip([bg, *subs], size=(W, H)).set_audio(voice)
+    audio = voice
+    if MUSIC:
+        try:
+            print("• Menambah musik latar...")
+            audio = CompositeAudioClip([voice, make_music(total)])
+        except Exception as e:
+            print(f"[!] Musik dilewati: {e}")
+
+    final = CompositeVideoClip([bg, *subs], size=(W, H)).set_audio(audio)
     final = final.set_duration(total)
 
     out = OUT_DIR / f"{slug}.mp4"

@@ -57,3 +57,11 @@ Video jadi dikirim balik ke chat, biasanya 5–15 menit setelah naskah dikirim.
   ganti ke TTS lain (mis. Google Cloud TTS atau ElevenLabs) di fungsi `_tts` pada `auto_shorts.py`.
 - **Batas Telegram**: video yang dikirim bot maksimal 50 MB (Shorts 30–50 detik jauh di bawahnya).
 - Naskah tidak disimpan di repo, hanya diproses lalu dihapus bersama runner.
+
+## Tampilan video
+Pengaturan ada di bagian atas `auto_shorts.py`:
+- `SUB_STYLE`: `"karaoke"` (kata menyala satu per satu) atau `"plain"`.
+- `WORDS_PER_CHUNK`, `COLOR_ACTIVE`, `FONT_SIZE`, `SUB_Y`: ukuran dan warna subtitle.
+- `POP_EFFECT`: efek teks membal saat potongan kata baru muncul.
+- `MUSIC`, `MUSIC_VOLUME`: musik latar. Taruh .mp3/.wav bebas hak cipta di folder `music/`;
+  jika kosong, bot membuat musik ambient otomatis.
