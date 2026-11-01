@@ -8,10 +8,12 @@ Instalasi:
     (butuh FFmpeg terpasang di sistem)
 
 Persiapan:
-    1. Daftar gratis di https://www.pexels.com/api/ lalu ambil API key.
-    2. Set environment variable:
-         Windows (PowerShell): $env:PEXELS_API_KEY="isi_key_kamu"
-         Mac/Linux:            export PEXELS_API_KEY="isi_key_kamu"
+    1. Ambil API key video gratis (cukup salah satu):
+         - Pexels:  https://www.pexels.com/api/  (kadang penerbitan key baru dijeda)
+         - Pixabay: daftar di https://pixabay.com lalu buka https://pixabay.com/api/docs/
+    2. Set environment variable PEXELS_API_KEY atau PIXABAY_API_KEY, mis. di Mac/Linux:
+         export PIXABAY_API_KEY="isi_key_kamu"
+       Tanpa key apa pun, video tetap jadi dengan latar polos.
     3. Buat file scripts.json (contoh ada di bawah).
 
 Pemakaian:
@@ -54,6 +56,7 @@ W, H, FPS = 1080, 1920, 30
 VOICE = "id-ID-ArdiNeural"      # pria. Alternatif wanita: "id-ID-GadisNeural"
 RATE = "+8%"                    # kecepatan bicara, mis. "+0%", "+10%", "-5%"
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")   # alternatif jika Pexels tidak tersedia
 MAX_CLIP_SECONDS = 5            # tiap potongan video stok maksimal sekian detik
 FONT_SIZE = 78
 SUB_Y = 1150                    # posisi vertikal subtitle
@@ -104,11 +107,18 @@ def make_voice(sentences, workdir: Path):
 
 
 # ---------------- 2. VISUAL ----------------
+def download_file(url: str, path: Path):
+    if path.exists():
+        return
+    with requests.get(url, stream=True, timeout=60) as dl:
+        dl.raise_for_status()
+        with open(path, "wb") as fh:
+            for chunk in dl.iter_content(1 << 20):
+                fh.write(chunk)
+
+
 def fetch_pexels_videos(keyword: str, n: int = 6):
     """Unduh beberapa video vertikal dari Pexels (di-cache)."""
-    if not PEXELS_API_KEY:
-        print("[!] PEXELS_API_KEY kosong, pakai latar warna polos.")
-        return []
     r = requests.get(
         "https://api.pexels.com/videos/search",
         headers={"Authorization": PEXELS_API_KEY},
@@ -121,17 +131,52 @@ def fetch_pexels_videos(keyword: str, n: int = 6):
         files = [f for f in v["video_files"] if f["file_type"] == "video/mp4"]
         if not files:
             continue
-        # pilih resolusi mendekati 1080 lebar
         best = min(files, key=lambda f: abs((f.get("width") or 0) - W))
         p = CACHE_DIR / f"pexels_{v['id']}.mp4"
-        if not p.exists():
-            with requests.get(best["link"], stream=True, timeout=60) as dl:
-                dl.raise_for_status()
-                with open(p, "wb") as fh:
-                    for chunk in dl.iter_content(1 << 20):
-                        fh.write(chunk)
+        download_file(best["link"], p)
         paths.append(p)
     return paths
+
+
+def fetch_pixabay_videos(keyword: str, n: int = 6):
+    """Unduh beberapa video dari Pixabay (di-cache). Dipotong ke 9:16 oleh fit_to_frame."""
+    r = requests.get(
+        "https://pixabay.com/api/videos/",
+        params={"key": PIXABAY_API_KEY, "q": keyword[:100], "per_page": max(3, n), "safesearch": "true"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    paths = []
+    for v in r.json().get("hits", []):
+        sizes = v.get("videos", {})
+        best = next((sizes[q] for q in ("large", "medium", "small") if sizes.get(q, {}).get("url")), None)
+        if not best:
+            continue
+        p = CACHE_DIR / f"pixabay_{v['id']}.mp4"
+        download_file(best["url"], p)
+        paths.append(p)
+    return paths
+
+
+def fetch_stock_videos(keyword: str):
+    """Coba Pexels dulu, lalu Pixabay. Jika semua gagal, kembalikan [] (latar polos)."""
+    sources = []
+    if PEXELS_API_KEY:
+        sources.append(("Pexels", fetch_pexels_videos))
+    if PIXABAY_API_KEY:
+        sources.append(("Pixabay", fetch_pixabay_videos))
+    if not sources:
+        print("[!] Tidak ada API key video (PEXELS_API_KEY / PIXABAY_API_KEY), pakai latar polos.")
+        return []
+    for name, fn in sources:
+        try:
+            paths = fn(keyword)
+            if paths:
+                return paths
+            print(f"[!] {name}: tidak ada hasil untuk '{keyword}'.")
+        except Exception as e:
+            print(f"[!] {name} gagal: {e}")
+    return []
 
 
 def fit_to_frame(clip):
@@ -206,7 +251,7 @@ def build_video(item: dict, index: int):
     print(f"  Durasi: {total:.1f} detik")
 
     print("• Mengambil visual...")
-    bg = make_background(fetch_pexels_videos(keyword), total)
+    bg = make_background(fetch_stock_videos(keyword), total)
 
     print("• Menempel subtitle...")
     subs, t = [], 0.0
