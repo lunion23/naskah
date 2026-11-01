@@ -3,9 +3,9 @@ name: Telegram Shorts Bot
 on:
   push:
     paths:
-      - "*.zip"          # otomatis ekstrak zip yang diunggah ke root repo
+      - "*.zip"
   schedule:
-    - cron: "*/5 * * * *"  # cek pesan Telegram tiap 5 menit
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
