@@ -3,8 +3,8 @@ Bot Telegram -> pembuat Shorts -> kirim balik ke Telegram.
 Dijalankan oleh GitHub Actions (lihat .github/workflows/shorts.yml).
 
 Cara kerja:
-  1. Ambil pesan baru lewat getUpdates (polling).
-  2. Tandai pesan sudah dibaca (agar tidak diproses dua kali).
+  1. Ambil pesan: dari UPDATE_JSON (mode webhook) atau getUpdates (mode polling).
+  2. Pada mode polling, tandai pesan sudah dibaca agar tidak diproses dua kali.
   3. Buat video tiap naskah, kirim hasilnya ke chat pengirim.
 
 Format pesan teks:
@@ -166,17 +166,22 @@ def main():
     if not ALLOWED:
         sys.exit("ALLOWED_CHAT_IDS kosong. Isi dulu di GitHub Secrets.")
 
-    updates = tg(
-        "getUpdates",
-        data={"timeout": 0, "allowed_updates": json.dumps(["message"])},
-    )
-    if not updates:
-        print("Tidak ada pesan baru.")
-        return
-
-    # Tandai semua pesan sudah dibaca SEBELUM diproses, agar tidak terulang jika error
-    last_id = max(u["update_id"] for u in updates)
-    tg("getUpdates", data={"offset": last_id + 1, "timeout": 0})
+    payload = os.getenv("UPDATE_JSON", "").strip()
+    if payload and payload != "null":
+        # Mode webhook: pesan dikirim oleh Cloudflare Worker lewat repository_dispatch
+        updates = [json.loads(payload)]
+    else:
+        # Mode polling (tanpa webhook)
+        updates = tg(
+            "getUpdates",
+            data={"timeout": 0, "allowed_updates": json.dumps(["message"])},
+        )
+        if not updates:
+            print("Tidak ada pesan baru.")
+            return
+        # Tandai sudah dibaca SEBELUM diproses, agar tidak terulang jika error
+        last_id = max(u["update_id"] for u in updates)
+        tg("getUpdates", data={"offset": last_id + 1, "timeout": 0})
 
     for u in updates:
         if "message" in u:
