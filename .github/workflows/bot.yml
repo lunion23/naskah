@@ -50,5 +50,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           UPDATE_JSON: ${{ toJson(github.event.client_payload.update) }}
         run: python bot.py
