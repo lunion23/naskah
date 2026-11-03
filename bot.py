@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import traceback
+from pathlib import Path
 
 import requests
 
@@ -42,7 +43,28 @@ HELP = (
     "• keyword = kata kunci video latar (bahasa Inggris, opsional)\n"
     "• Untuk banyak naskah sekaligus, kirim file .json (maks "
     f"{MAX_ITEMS} naskah).\n"
-    "• Proses butuh beberapa menit, hasil dikirim ke chat ini."
+    "• Proses butuh beberapa menit, hasil dikirim ke chat ini.\n\n"
+    "Video dari kode JavaScript:\n"
+    "Kirim  /js  diikuti kode, atau kirim file .js / .html. Ketik /jshelp untuk panduan."
+)
+
+JS_HELP = (
+    "Kirim kode JavaScript, saya ubah jadi video 1080x1920.\n\n"
+    "Format: /js lalu kode (atau kirim sebagai file .js / .html jika panjang).\n\n"
+    "Tersedia: canvas, ctx, W, H (jangan dideklarasikan ulang).\n"
+    "Tulis function draw(t) { ... } dengan t = detik, atau pakai requestAnimationFrame biasa.\n\n"
+    "Baris pengaturan di awal kode:\n"
+    "// durasi: 10   (detik, maks 45, bawaan 8)\n"
+    "// narasi: teks yang dibacakan   (opsional, menambah suara)\n\n"
+    "Contoh:\n"
+    "/js\n"
+    "// durasi: 5\n"
+    "function draw(t) {\n"
+    "  ctx.fillStyle = 'hsl(' + (t * 60) + ',70%,30%)';\n"
+    "  ctx.fillRect(0, 0, W, H);\n"
+    "  ctx.fillStyle = '#fff'; ctx.font = 'bold 120px sans-serif';\n"
+    "  ctx.fillText('Halo ' + t.toFixed(1), 200, 900);\n"
+    "}"
 )
 
 
@@ -106,11 +128,15 @@ def normalize(raw):
     }
 
 
-def read_document(doc):
+def download_text(doc):
     info = tg("getFile", data={"file_id": doc["file_id"]})
     r = requests.get(f"{FILE_API}/{info['file_path']}", timeout=60)
     r.raise_for_status()
-    content = r.content.decode("utf-8-sig")
+    return r.content.decode("utf-8-sig")
+
+
+def read_document(doc):
+    content = download_text(doc)
     if doc.get("file_name", "").lower().endswith(".json"):
         data = json.loads(content)
         if isinstance(data, dict):
@@ -119,6 +145,36 @@ def read_document(doc):
     else:
         items = [parse_text(content)]
     return [i for i in items if i]
+
+
+# ---------------- Video dari kode JS ----------------
+def extract_js(msg):
+    """Kembalikan kode JS/HTML jika pesan meminta video dari kode, selain itu None."""
+    doc = msg.get("document")
+    if doc and doc.get("file_name", "").lower().endswith((".js", ".html", ".htm")):
+        return download_text(doc)
+    text = msg.get("text") or ""
+    m = re.match(r"^/js(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
+    if m:
+        return m.group(1)
+    return None
+
+
+def handle_js(chat_id, code):
+    if not code.strip():
+        send(chat_id, JS_HELP)
+        return
+    send(chat_id, "🎬 Menjalankan kode JS dan merekam video...")
+    try:
+        from js_video import build_js_video  # impor di sini agar run biasa tetap ringan
+
+        n = next(counter)
+        Path("output").mkdir(exist_ok=True)
+        out = build_js_video(code, Path("output") / f"js-{n:02d}.mp4", Path("cache") / f"js{n}")
+        send_video(chat_id, out, "Video dari kode JS")
+    except Exception as e:
+        traceback.print_exc()
+        send(chat_id, f"Gagal membuat video JS: {str(e)[:400]}")
 
 
 # ---------------- Proses satu pesan ----------------
@@ -131,6 +187,18 @@ def handle_message(msg):
     text = (msg.get("text") or "").strip()
     if text.startswith(("/start", "/help")):
         send(chat_id, HELP)
+        return
+    if text.startswith("/jshelp"):
+        send(chat_id, JS_HELP)
+        return
+
+    try:
+        js_code = extract_js(msg)
+    except Exception as e:
+        send(chat_id, f"File tidak bisa dibaca: {e}")
+        return
+    if js_code is not None:
+        handle_js(chat_id, js_code)
         return
 
     try:

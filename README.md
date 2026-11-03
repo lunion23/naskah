@@ -65,3 +65,12 @@ Pengaturan ada di bagian atas `auto_shorts.py`:
 - `POP_EFFECT`: efek teks membal saat potongan kata baru muncul.
 - `MUSIC`, `MUSIC_VOLUME`: musik latar. Taruh .mp3/.wav bebas hak cipta di folder `music/`;
   jika kosong, bot membuat musik ambient otomatis.
+
+## Video dari kode JavaScript
+Kirim ke bot `/js` diikuti kode, atau kirim file `.js` / `.html` (untuk kode panjang, batas pesan Telegram 4096 karakter).
+- Tersedia `canvas`, `ctx`, `W`, `H` (1080x1920). Tulis `function draw(t) { ... }` (t = detik) atau pakai `requestAnimationFrame` biasa.
+- Baris pengaturan di awal kode: `// durasi: 10` (maks 45 detik) dan `// narasi: teks yang dibacakan` (opsional).
+  Pada file HTML tulis `<!-- durasi: 10 -->` di awal baris.
+- Kode dijalankan di Chromium tanpa layar dengan waktu virtual, jadi animasi selalu mulus (30 fps).
+- Akses internet diblokir kecuali CDN cdnjs, jsDelivr, dan Google Fonts. Hanya chat di `ALLOWED_CHAT_IDS` yang bisa menjalankan kode.
+- Contoh: `contoh/contoh_animasi.js`. Chromium dipasang otomatis saat permintaan JS pertama dalam satu proses (±1-2 menit).

@@ -3,3 +3,4 @@ moviepy==1.0.3
 pillow<10
 numpy<2
 requests
+playwright
