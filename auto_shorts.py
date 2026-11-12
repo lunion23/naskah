@@ -56,7 +56,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- KONFIGURASI ----------------
 W, H, FPS = 1080, 1920, 30
-VOICE = "id-ID-GadisNeural"      # pria. Alternatif wanita: "id-ID-GadisNeural"
+VOICE = "jv-ID-SitiNeural"      # pria. Alternatif wanita: "id-ID-GadisNeural"
 RATE = "+8%"                    # kecepatan bicara, mis. "+0%", "+10%", "-5%"
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")   # alternatif jika Pexels tidak tersedia
