@@ -84,6 +84,25 @@ OUT_DIR.mkdir(exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
 
 
+# ---------------- PEMETAAN KATA KUNCI PINTAR ----------------
+KEYWORD_MAPPING = {
+    "durian": "durian fruit food",
+    "soda": "cola soft drink bubbles",
+    "kembung": "stomach pain health care",
+    "lambung": "stomach anatomy medical",
+    "hoax": "warning caution red sign",
+    "kesehatan": "healthy lifestyle medical",
+    "makanan": "delicious food eating"
+}
+
+def get_smart_keyword(original_keyword: str) -> str:
+    key_lower = original_keyword.lower()
+    for k, v in KEYWORD_MAPPING.items():
+        if k in key_lower:
+            return v
+    return original_keyword
+
+
 # ---------------- UTILITAS ----------------
 def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50] or "video"
@@ -407,14 +426,20 @@ def make_music(duration: float):
 # ---------------- 4. RAKIT VIDEO ----------------
 def build_video(item: dict, index: int):
     title = item["title"]
-    keyword = item.get("keyword", "nature")
+    
+    # Menerapkan smart keyword agar video stok tidak melenceng jauh
+    raw_keyword = item.get("keyword", "nature")
+    keyword = get_smart_keyword(raw_keyword)
+    
     sentences = split_sentences(item["text"])
     slug = f"{index:02d}-{slugify(title)}"
     workdir = CACHE_DIR / slug
     workdir.mkdir(exist_ok=True)
 
     print(f"\n=== [{index}] {title} ===")
+    print(f"• Mengambil video stok untuk keyword: '{keyword}' (asli: '{raw_keyword}')")
     print("• Membuat suara...")
+    
     audio_paths, all_marks = make_voice(sentences, workdir)
     audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(audio_clips)
