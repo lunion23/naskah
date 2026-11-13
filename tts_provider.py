@@ -8,7 +8,7 @@ Pemilihan penyedia:
 
 Pengaturan ElevenLabs (environment variable):
   ELEVENLABS_API_KEY    kunci API (wajib)
-  ELEVENLABS_VOICE_ID   ID suara dari akun kamu (bawaan: 21m00Tcm4TlvDq8ikWAM)
+  ELEVENLABS_VOICE_ID   ID suara dari akun kamu (bawaan: pNInz6obpgDQGcFmaJgB)
   ELEVENLABS_MODEL      bawaan eleven_multilingual_v2 (kualitas terbaik); eleven_flash_v2_5 lebih murah
   ELEVENLABS_SPEED      0.7 - 1.2, bawaan 1.0
   ELEVENLABS_STABILITY  0 - 1, bawaan 0.5
