@@ -122,10 +122,12 @@ def audio_duration(path: Path) -> float:
 
 
 def tts_to_file(text: str, path: Path):
-    """Narasi lewat tts_provider (ElevenLabs atau Edge TTS)."""
-    import tts_provider
+    import edge_tts
 
-    tts_provider.synthesize(text, path, edge_voice=VOICE, edge_rate=RATE)
+    async def run():
+        await edge_tts.Communicate(text, VOICE, rate=RATE).save(str(path))
+
+    asyncio.run(run())
 
 
 def ensure_browser():

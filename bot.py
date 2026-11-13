@@ -122,22 +122,6 @@ def send_video(chat_id, path, caption):
         )
 
 
-def send_document(chat_id, path, caption=""):
-    with open(path, "rb") as f:
-        tg("sendDocument", data={"chat_id": chat_id, "caption": caption[:1000]}, files={"document": f})
-
-
-def send_extras(chat_id, video_path):
-    """Kirim file subtitle (.srt) dan waktu (.json) yang dibuat berdampingan dengan video."""
-    for ext, caption in ((".srt", "Subtitle (SRT)"), (".json", "Waktu per kalimat dan kata (JSON)")):
-        p = Path(video_path).with_suffix(ext)
-        if p.exists():
-            try:
-                send_document(chat_id, p, caption)
-            except Exception:
-                traceback.print_exc()
-
-
 # ---------------- Parsing naskah ----------------
 def parse_text(text):
     title = keyword = None
@@ -224,7 +208,6 @@ def handle_react(chat_id, items):
             Path("output").mkdir(exist_ok=True)
             out = build_react_video(item, Path("output") / f"react-{k:02d}.mp4", Path("cache") / f"react{k}")
             send_video(chat_id, out, f"{item['title']} #Shorts")
-            send_extras(chat_id, out)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")
@@ -320,7 +303,6 @@ def handle_message(msg):
             send(chat_id, f"({n}/{len(items)}) Memproses: {item['title']}")
             out = build_video(item, next(counter))
             send_video(chat_id, out, f"{item['title']} #Shorts")
-            send_extras(chat_id, out)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")

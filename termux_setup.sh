@@ -11,15 +11,12 @@ echo "• Memasang Python, FFmpeg, Pillow..."
 pkg install -y python python-pillow ffmpeg curl unzip clang make openssl libffi
 python -m pip install -U pip setuptools wheel
 
-echo "• Memasang requests..."
+echo "• Memasang edge-tts dan requests..."
 export ANDROID_API_LEVEL="$(getprop ro.build.version.sdk)"
-python -m pip install --extra-index-url https://termux-user-repository.github.io/pypi/ requests
-
-echo "• Memasang edge-tts (opsional, hanya cadangan bila tidak memakai ElevenLabs)..."
-if ! python -m pip install --extra-index-url https://termux-user-repository.github.io/pypi/ edge-tts; then
+if ! python -m pip install --extra-index-url https://termux-user-repository.github.io/pypi/ edge-tts requests; then
   echo "Cara biasa gagal, mencoba tanpa kompilasi C..."
   AIOHTTP_NO_EXTENSIONS=1 MULTIDICT_NO_EXTENSIONS=1 YARL_NO_EXTENSIONS=1 FROZENLIST_NO_EXTENSIONS=1 \
-    python -m pip install --no-cache-dir edge-tts || echo "PERINGATAN: edge-tts gagal dipasang. Tidak masalah jika kamu memakai ElevenLabs (isi ELEVENLABS_API_KEY di .env)."
+    python -m pip install --no-cache-dir edge-tts requests
 fi
 
 mkdir -p output cache music
@@ -30,12 +27,11 @@ python - <<'PY'
 import shutil, sys
 from pathlib import Path
 ok = True
-for mod, wajib in (("PIL", True), ("requests", True), ("edge_tts", False)):
+for mod in ("PIL", "requests", "edge_tts"):
     try:
         __import__(mod); print("  OK  ", mod)
     except Exception as e:
-        ok = ok and not wajib
-        print("  GAGAL" if wajib else "  (opsional, tidak ada)", mod, "->", e)
+        ok = False; print("  GAGAL", mod, "->", e)
 for exe in ("ffmpeg", "ffprobe"):
     found = shutil.which(exe)
     print("  OK  " if found else "  GAGAL", exe, found or "")
@@ -49,5 +45,5 @@ PY
 
 echo
 echo "Selesai. Langkah berikutnya:"
-echo "  1) Isi token bot, chat ID, dan ELEVENLABS_API_KEY di file .env   (nano .env)"
+echo "  1) Isi token bot dan chat ID di file .env   (nano .env)"
 echo "  2) Jalankan bot:  bash termux_run.sh"

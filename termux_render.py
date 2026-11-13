@@ -28,9 +28,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-import tts_provider
-from subtitles_export import safe_export
-
 # ---------------- KONFIGURASI ----------------
 W, H, FPS = 1080, 1920, 30
 VOICE = os.getenv("VOICE", "id-ID-ArdiNeural")
@@ -119,9 +116,26 @@ def download(url, path: Path):
 
 
 # ---------------- 1. SUARA ----------------
-def tts_sentence(text: str, path: Path, previous_text=None, next_text=None):
-    """Suara via tts_provider (ElevenLabs atau Edge TTS). Mengembalikan waktu tiap kata."""
-    return tts_provider.synthesize(text, path, previous_text, next_text, edge_voice=VOICE, edge_rate=RATE)
+async def _tts(text: str, path: Path):
+    import edge_tts
+
+    try:
+        comm = edge_tts.Communicate(text, VOICE, rate=RATE, boundary="WordBoundary")
+    except TypeError:  # edge-tts versi lama
+        comm = edge_tts.Communicate(text, VOICE, rate=RATE)
+    marks = []
+    with open(path, "wb") as f:
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                a = chunk["offset"] / 1e7
+                marks.append((a, a + chunk["duration"] / 1e7))
+    return marks
+
+
+def tts_sentence(text: str, path: Path):
+    return asyncio.run(_tts(text, path))
 
 
 def word_timings(sentence: str, marks, duration: float):
@@ -348,13 +362,11 @@ def build_video(item: dict, index: int) -> Path:
     workdir.mkdir(exist_ok=True)
 
     print(f"\n=== [{index}] {title} ===")
-    print(f"• Membuat suara ({tts_provider.label()})...")
+    print("• Membuat suara...")
     durations, all_marks, mp3s = [], [], []
     for i, s in enumerate(sentences):
         p = workdir / f"s{i:02d}.mp3"
-        prev = sentences[i - 1] if i > 0 else None
-        nxt = sentences[i + 1] if i + 1 < len(sentences) else None
-        all_marks.append(tts_sentence(s, p, prev, nxt))
+        all_marks.append(tts_sentence(s, p))
         durations.append(media_duration(p))
         mp3s.append(p)
 
@@ -391,7 +403,6 @@ def build_video(item: dict, index: int) -> Path:
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-r", str(FPS),
             "-c:a", "aac", "-b:a", "160k", "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
     run(cmd)
-    safe_export(title, sentences, durations, all_marks, total, out)
     print(f"✔ Selesai: {out}")
     return out
 
