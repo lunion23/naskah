@@ -74,3 +74,36 @@ Kirim ke bot `/js` diikuti kode, atau kirim file `.js` / `.html` (untuk kode pan
 - Kode dijalankan di Chromium tanpa layar dengan waktu virtual, jadi animasi selalu mulus (30 fps).
 - Akses internet diblokir kecuali CDN cdnjs, jsDelivr, dan Google Fonts. Hanya chat di `ALLOWED_CHAT_IDS` yang bisa menjalankan kode.
 - Contoh: `contoh/contoh_animasi.js`. Chromium dipasang otomatis saat permintaan JS pertama dalam satu proses (±1-2 menit).
+
+## Mode /react: naskah → video animasi React (sinkron dengan suara)
+Kirim `/react` diikuti naskah (format `judul:` lalu isi), atau kirim file `.json` dengan keterangan (caption) `/react`.
+- Suara + waktu tiap kata dari Edge TTS; halaman React (tanpa JSX, dari cdnjs) menampilkan judul, kartu kata yang
+  menyala sesuai ucapan, latar bergerak, dan bilah progres. Musik latar ikut dipakai (lihat `MUSIC` di `auto_shorts.py`).
+- Maksimal 3 naskah per pesan (tiap video ±3-6 menit). `keyword` tidak dipakai di mode ini.
+- Teks kecil di atas judul ("FAKTA UNIK") diubah lewat `LABEL` di `react_video.py`, atau lewat kolom `"label"` pada item JSON.
+- Warna tema dipilih otomatis dari judul (5 palet di `PALETTES`).
+
+## Render di Termux (Android), tanpa GitHub Actions
+Memakai `termux_render.py` (hanya FFmpeg + Pillow + edge-tts; tanpa moviepy/numpy/Chromium).
+1. Pasang Termux dari **F-Droid** (versi Play Store sudah usang).
+2. `termux-setup-storage`, lalu salin zip ke Termux dan ekstrak: `cp ~/storage/downloads/telegram-shorts-bot.zip ~ && unzip -o telegram-shorts-bot.zip -d shorts && cd shorts`
+3. `bash termux_setup.sh` (memasang paket), lalu isi token dan chat ID di `.env` (`nano .env`).
+4. `bash termux_run.sh` menjalankan bot (mode polling). Atau tanpa Telegram: `python termux_render.py scripts.json`.
+- Hasil ada di folder `output/`. Salin ke galeri: `cp output/*.mp4 ~/storage/movies/`.
+- Telegram hanya mendukung satu mode: webhook (Cloudflare) ATAU polling (Termux). `termux_run.sh` mematikan webhook;
+  untuk kembali ke GitHub, pasang lagi webhook lewat `setWebhook`.
+- Mode `/js` dan `/react` butuh Chromium sehingga belum tersedia di Termux (tetap jalan di GitHub Actions).
+- Pengaturan lewat `.env`: `VOICE`, `RATE`, `MUSIC`, `MUSIC_VOLUME`, `FONT_PATH`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`.
+
+## Suara ElevenLabs (pengganti Edge TTS)
+Semua pembuat video memakai `tts_provider.py`. Jika `ELEVENLABS_API_KEY` terisi, suara dibuat oleh ElevenLabs
+(endpoint `with-timestamps`, jadi waktu tiap kata akurat untuk subtitle karaoke); jika kosong, dipakai Edge TTS (gratis).
+- Variabel: `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL` (bawaan `eleven_multilingual_v2`),
+  `ELEVENLABS_SPEED` (0.7-1.2), `ELEVENLABS_STABILITY`, `ELEVENLABS_SIMILARITY`, `TTS_PROVIDER` (`elevenlabs`/`edge`).
+- GitHub: tambahkan Secrets `ELEVENLABS_API_KEY` dan `ELEVENLABS_VOICE_ID`, lalu pastikan `bot.yml` meneruskannya (lihat `.github/workflows/bot.yml`).
+- Termux: isi di file `.env`.
+- ElevenLabs menagih per karakter; paket gratis tidak untuk penggunaan komersial (cek ketentuan terbaru di elevenlabs.io).
+
+## SRT dan waktu
+Setiap video menghasilkan `nama.srt` (subtitle) dan `nama.json` (waktu per kalimat dan kata) di folder `output/`;
+bot mengirim keduanya setelah video. Cocok untuk diunggah ke YouTube sebagai caption.

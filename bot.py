@@ -29,10 +29,25 @@ import requests
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED = {x.strip() for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",") if x.strip()}
 MAX_ITEMS = 10  # batas naskah per pesan
+MAX_REACT_ITEMS = 3  # batas naskah per pesan untuk mode /react (render lebih lama)
 
 API = f"https://api.telegram.org/bot{TOKEN}"
 FILE_API = f"https://api.telegram.org/file/bot{TOKEN}"
 counter = itertools.count(1)
+RENDERER = os.getenv("RENDERER", "").strip().lower()      # "termux" = pembuat video ringan (FFmpeg + Pillow)
+POLL_TIMEOUT = int(os.getenv("POLL_TIMEOUT", "0"))         # detik; >0 = long polling (hemat baterai di HP)
+NO_BROWSER = (
+    "Mode ini butuh browser (Chromium) yang belum tersedia di Termux. "
+    "Jalankan lewat GitHub Actions, atau gunakan naskah teks / file .json biasa."
+)
+
+
+def get_build_video():
+    if RENDERER == "termux":
+        from termux_render import build_video
+    else:
+        from auto_shorts import build_video
+    return build_video
 
 HELP = (
     "Halo! Kirim naskah, nanti saya buatkan video YouTube Shorts-nya.\n\n"
@@ -45,7 +60,20 @@ HELP = (
     f"{MAX_ITEMS} naskah).\n"
     "• Proses butuh beberapa menit, hasil dikirim ke chat ini.\n\n"
     "Video dari kode JavaScript:\n"
-    "Kirim  /js  diikuti kode, atau kirim file .js / .html. Ketik /jshelp untuk panduan."
+    "Kirim  /js  diikuti kode, atau kirim file .js / .html. Ketik /jshelp untuk panduan.\n\n"
+    "Video animasi React dari naskah:\n"
+    "Kirim  /react  diikuti naskah (format sama seperti di atas). Animasi sinkron dengan suara."
+)
+
+REACT_HELP = (
+    "Mode /react: naskah jadi video animasi bergaya React yang sinkron dengan suara.\n\n"
+    "Format:\n"
+    "/react\n"
+    "judul: Pelangi Berbentuk Lingkaran\n"
+    "Tahukah kamu, pelangi sebenarnya lingkaran penuh! ...\n\n"
+    "• Bisa juga kirim file .json dengan keterangan (caption) /react.\n"
+    f"• Maksimal {MAX_REACT_ITEMS} naskah per pesan; tiap video butuh sekitar 3-6 menit.\n"
+    "• Kata 'keyword' tidak dipakai di mode ini (latar dianimasikan sendiri)."
 )
 
 JS_HELP = (
@@ -92,6 +120,22 @@ def send_video(chat_id, path, caption):
             },
             files={"video": f},
         )
+
+
+def send_document(chat_id, path, caption=""):
+    with open(path, "rb") as f:
+        tg("sendDocument", data={"chat_id": chat_id, "caption": caption[:1000]}, files={"document": f})
+
+
+def send_extras(chat_id, video_path):
+    """Kirim file subtitle (.srt) dan waktu (.json) yang dibuat berdampingan dengan video."""
+    for ext, caption in ((".srt", "Subtitle (SRT)"), (".json", "Waktu per kalimat dan kata (JSON)")):
+        p = Path(video_path).with_suffix(ext)
+        if p.exists():
+            try:
+                send_document(chat_id, p, caption)
+            except Exception:
+                traceback.print_exc()
 
 
 # ---------------- Parsing naskah ----------------
@@ -147,6 +191,45 @@ def read_document(doc):
     return [i for i in items if i]
 
 
+# ---------------- Mode /react: naskah -> video animasi React ----------------
+def extract_react(msg):
+    """Daftar naskah jika pesan memakai /react (bisa kosong), None jika bukan mode ini."""
+    text = msg.get("text") or ""
+    m = re.match(r"^/react(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
+    if m:
+        item = parse_text(m.group(1))
+        return [item] if item else []
+    caption = msg.get("caption") or ""
+    if msg.get("document") and re.match(r"^/react\b", caption, re.I):
+        return read_document(msg["document"])
+    return None
+
+
+def handle_react(chat_id, items):
+    if RENDERER == "termux":
+        send(chat_id, NO_BROWSER)
+        return
+    if not items:
+        send(chat_id, REACT_HELP)
+        return
+    items = items[:MAX_REACT_ITEMS]
+    send(chat_id, f"🎬 Membuat {len(items)} video animasi React. Tiap video sekitar 3-6 menit...")
+
+    from react_video import build_react_video  # impor di sini agar run biasa tetap ringan
+
+    for n, item in enumerate(items, 1):
+        try:
+            send(chat_id, f"({n}/{len(items)}) Memproses: {item['title']}")
+            k = next(counter)
+            Path("output").mkdir(exist_ok=True)
+            out = build_react_video(item, Path("output") / f"react-{k:02d}.mp4", Path("cache") / f"react{k}")
+            send_video(chat_id, out, f"{item['title']} #Shorts")
+            send_extras(chat_id, out)
+        except Exception as e:
+            traceback.print_exc()
+            send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")
+
+
 # ---------------- Video dari kode JS ----------------
 def extract_js(msg):
     """Kembalikan kode JS/HTML jika pesan meminta video dari kode, selain itu None."""
@@ -161,6 +244,9 @@ def extract_js(msg):
 
 
 def handle_js(chat_id, code):
+    if RENDERER == "termux":
+        send(chat_id, NO_BROWSER)
+        return
     if not code.strip():
         send(chat_id, JS_HELP)
         return
@@ -193,6 +279,15 @@ def handle_message(msg):
         return
 
     try:
+        react_items = extract_react(msg)
+    except Exception as e:
+        send(chat_id, f"File tidak bisa dibaca: {e}")
+        return
+    if react_items is not None:
+        handle_react(chat_id, react_items)
+        return
+
+    try:
         js_code = extract_js(msg)
     except Exception as e:
         send(chat_id, f"File tidak bisa dibaca: {e}")
@@ -218,13 +313,14 @@ def handle_message(msg):
     items = items[:MAX_ITEMS]
     send(chat_id, f"Diterima {len(items)} naskah. Mulai diproses...")
 
-    from auto_shorts import build_video  # impor di sini agar run kosong tetap cepat
+    build_video = get_build_video()  # impor di sini agar run kosong tetap cepat
 
     for n, item in enumerate(items, 1):
         try:
             send(chat_id, f"({n}/{len(items)}) Memproses: {item['title']}")
             out = build_video(item, next(counter))
             send_video(chat_id, out, f"{item['title']} #Shorts")
+            send_extras(chat_id, out)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")
@@ -232,7 +328,7 @@ def handle_message(msg):
 
 def main():
     if not ALLOWED:
-        sys.exit("ALLOWED_CHAT_IDS kosong. Isi dulu di GitHub Secrets.")
+        sys.exit("ALLOWED_CHAT_IDS kosong. Isi di GitHub Secrets (atau file .env di Termux).")
 
     payload = os.getenv("UPDATE_JSON", "").strip()
     if payload and payload != "null":
@@ -242,7 +338,7 @@ def main():
         # Mode polling (tanpa webhook)
         updates = tg(
             "getUpdates",
-            data={"timeout": 0, "allowed_updates": json.dumps(["message"])},
+            data={"timeout": POLL_TIMEOUT, "allowed_updates": json.dumps(["message"])},
         )
         if not updates:
             print("Tidak ada pesan baru.")

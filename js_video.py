@@ -122,12 +122,10 @@ def audio_duration(path: Path) -> float:
 
 
 def tts_to_file(text: str, path: Path):
-    import edge_tts
+    """Narasi lewat tts_provider (ElevenLabs atau Edge TTS)."""
+    import tts_provider
 
-    async def run():
-        await edge_tts.Communicate(text, VOICE, rate=RATE).save(str(path))
-
-    asyncio.run(run())
+    tts_provider.synthesize(text, path, edge_voice=VOICE, edge_rate=RATE)
 
 
 def ensure_browser():
@@ -177,6 +175,36 @@ def render_frames(html: str, seconds: float, frames_dir: Path):
         browser.close()
 
 
+def encode_video(frames: Path, audio, seconds: float, out_path: Path):
+    """Gabungkan frame JPG (dan audio opsional) menjadi MP4."""
+    cmd = [ffmpeg_bin(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", str(frames / "f%05d.jpg")]
+    if audio:
+        cmd += ["-i", str(audio)]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-r", str(FPS)]
+    if audio:
+        cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
+    cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
+    subprocess.run(cmd, check=True)
+
+
+def render_html_to_mp4(html: str, seconds: float, audio, out_path: Path, workdir: Path) -> Path:
+    """Halaman HTML (dengan fungsi draw(t) atau rAF) -> MP4. `audio` = path file suara atau None."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    ensure_browser()
+    frames = workdir / "frames"
+    if frames.exists():
+        shutil.rmtree(frames)
+    frames.mkdir()
+
+    print(f"• Merekam {int(round(seconds * FPS))} frame ({seconds:.1f} detik)...")
+    render_frames(html, seconds, frames)
+
+    print("• Menggabungkan video...")
+    encode_video(frames, audio, seconds, out_path)
+    shutil.rmtree(frames, ignore_errors=True)
+    return out_path
+
+
 def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
     """Kode JS/HTML -> MP4. Mengembalikan out_path."""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -191,24 +219,4 @@ def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
 
     seconds = duration or ((audio_len + 0.6) if audio_len else DEFAULT_SECONDS)
     seconds = max(1.0, min(seconds, MAX_SECONDS))
-
-    ensure_browser()
-    frames = workdir / "frames"
-    if frames.exists():
-        shutil.rmtree(frames)
-    frames.mkdir()
-
-    print(f"• Merekam {int(round(seconds * FPS))} frame ({seconds:.1f} detik)...")
-    render_frames(build_html(code), seconds, frames)
-
-    print("• Menggabungkan video...")
-    cmd = [ffmpeg_bin(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", str(frames / "f%05d.jpg")]
-    if audio:
-        cmd += ["-i", str(audio)]
-    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-r", str(FPS)]
-    if audio:
-        cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
-    cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
-    subprocess.run(cmd, check=True)
-    shutil.rmtree(frames, ignore_errors=True)
-    return out_path
+    return render_html_to_mp4(build_html(code), seconds, audio, out_path, workdir)

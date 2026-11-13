@@ -38,7 +38,6 @@ import re
 import sys
 from pathlib import Path
 
-import edge_tts
 import numpy as np
 import requests
 from moviepy.editor import (
@@ -54,9 +53,12 @@ from moviepy.audio.AudioClip import AudioArrayClip, CompositeAudioClip
 from moviepy.audio.fx import all as afx
 from PIL import Image, ImageDraw, ImageFont
 
+import tts_provider
+from subtitles_export import safe_export
+
 # ---------------- KONFIGURASI ----------------
 W, H, FPS = 1080, 1920, 30
-VOICE = "jv-ID-SitiNeural"      # pria. Alternatif wanita: "id-ID-GadisNeural"
+VOICE = "id-ID-ArdiNeural"      # pria. Alternatif wanita: "id-ID-GadisNeural"
 RATE = "+8%"                    # kecepatan bicara, mis. "+0%", "+10%", "-5%"
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")   # alternatif jika Pexels tidak tersedia
@@ -103,29 +105,15 @@ def load_font(size: int):
 
 
 # ---------------- 1. SUARA ----------------
-async def _tts(text: str, path: Path):
-    """Simpan suara ke path dan kembalikan waktu tiap kata [(mulai, selesai), ...] dalam detik."""
-    try:
-        comm = edge_tts.Communicate(text, VOICE, rate=RATE, boundary="WordBoundary")
-    except TypeError:  # edge-tts versi lama tidak punya parameter boundary
-        comm = edge_tts.Communicate(text, VOICE, rate=RATE)
-    marks = []
-    with open(path, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                a = chunk["offset"] / 1e7
-                marks.append((a, a + chunk["duration"] / 1e7))
-    return marks
-
-
 def make_voice(sentences, workdir: Path):
-    """Satu file audio per kalimat supaya durasi subtitle akurat. Mengembalikan (paths, marks)."""
+    """Satu file audio per kalimat supaya durasi subtitle akurat. Mengembalikan (paths, marks).
+    Penyedia suara (ElevenLabs atau Edge TTS) diatur di tts_provider.py."""
     paths, all_marks = [], []
     for i, s in enumerate(sentences):
         p = workdir / f"s{i:02d}.mp3"
-        all_marks.append(asyncio.run(_tts(s, p)))
+        prev = sentences[i - 1] if i > 0 else None
+        nxt = sentences[i + 1] if i + 1 < len(sentences) else None
+        all_marks.append(tts_provider.synthesize(s, p, prev, nxt, edge_voice=VOICE, edge_rate=RATE))
         paths.append(p)
     return paths, all_marks
 
@@ -414,7 +402,7 @@ def build_video(item: dict, index: int):
     workdir.mkdir(exist_ok=True)
 
     print(f"\n=== [{index}] {title} ===")
-    print("• Membuat suara...")
+    print(f"• Membuat suara ({tts_provider.label()})...")
     audio_paths, all_marks = make_voice(sentences, workdir)
     audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(audio_clips)
@@ -461,6 +449,7 @@ def build_video(item: dict, index: int):
         threads=4,
         logger=None,
     )
+    safe_export(title, sentences, [ac.duration for ac in audio_clips], all_marks, total, out)
     print(f"✔ Selesai: {out}")
     return out
 
