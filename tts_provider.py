@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 DEFAULT_MODEL = "eleven_multilingual_v2"
 API_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
 
