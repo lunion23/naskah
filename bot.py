@@ -295,20 +295,39 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
     return {"title": title, "scenes": scenes}
 
 
+def _parse_motion_json(raw_text: str) -> list:
+    """Bersihkan prefix /motion jika ikut tersalin di file JSON, lalu parse storyboard."""
+    cleaned = re.sub(r"^\s*/motion(?:@\w+)?\s*", "", raw_text, count=1, flags=re.I).strip()
+    raw = json.loads(cleaned)
+    items = raw if isinstance(raw, list) else [raw]
+    out = []
+    for it in items:
+        if isinstance(it, dict) and it.get("scenes"):
+            out.append({"title": it.get("title") or "Infografis", "scenes": it["scenes"]})
+        elif isinstance(it, dict) and it.get("text"):
+            out.append(_text_to_motion_storyboard(it.get("title") or "Infografis", it["text"]))
+    return out
+
+
 def extract_motion(msg):
-    """Kembalikan list storyboard {'title', 'scenes'} jika memakai /motion, selain itu None."""
+    """Kembalikan list storyboard {'title', 'scenes'} jika memakai /motion atau file JSON ber-scenes."""
     doc = msg.get("document")
-    caption = msg.get("caption") or ""
-    if doc and re.match(r"^/motion\b", caption, re.I):
-        raw = json.loads(download_text(doc))
-        items = raw if isinstance(raw, list) else [raw]
-        out = []
-        for it in items:
-            if isinstance(it, dict) and it.get("scenes"):
-                out.append({"title": it.get("title") or "Infografis", "scenes": it["scenes"]})
-            elif isinstance(it, dict) and it.get("text"):
-                out.append(_text_to_motion_storyboard(it.get("title") or "Infografis", it["text"]))
-        return out
+    caption = (msg.get("caption") or "").strip()
+    fname = (doc.get("file_name") or "").lower() if doc else ""
+
+    if doc and (re.match(r"^/motion\b", caption, re.I) or fname.endswith(".json")):
+        raw_text = download_text(doc)
+        if re.match(r"^/motion\b", caption, re.I):
+            return _parse_motion_json(raw_text)
+        # Deteksi otomatis jika file .json berisi storyboard "scenes" walau tanpa caption /motion
+        try:
+            cleaned = re.sub(r"^\s*/motion(?:@\w+)?\s*", "", raw_text, count=1, flags=re.I).strip()
+            probe = json.loads(cleaned)
+            probe_list = probe if isinstance(probe, list) else [probe]
+            if any(isinstance(x, dict) and x.get("scenes") for x in probe_list):
+                return _parse_motion_json(raw_text)
+        except Exception:
+            pass
 
     text = msg.get("text") or ""
     m = re.match(r"^/motion(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
@@ -317,9 +336,7 @@ def extract_motion(msg):
         if not body:
             return []
         if body.startswith(("{", "[")):
-            raw = json.loads(body)
-            items = raw if isinstance(raw, list) else [raw]
-            return [{"title": x.get("title") or "Infografis", "scenes": x["scenes"]} for x in items if x.get("scenes")]
+            return _parse_motion_json(body)
         parsed = parse_text(body)
         return [_text_to_motion_storyboard(parsed["title"], parsed["text"])] if parsed else []
     return None
