@@ -295,13 +295,36 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
     return {"title": title, "scenes": scenes}
 
 
+def _clean_json_text(raw_text: str) -> str:
+    """Bersihkan BOM, pagar kode ```json, prefix /motion, kutip melengkung, dan trailing comma."""
+    s = raw_text.lstrip("\ufeff").strip()
+    s = re.sub(r"^```(?:json|text|txt)?\s*", "", s, flags=re.I)
+    s = re.sub(r"\s*```\s*$", "", s)
+    s = re.sub(r"^\s*/motion(?:@\w+)?\s*", "", s, count=1, flags=re.I).strip()
+    s = s.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    s = re.sub(r",\s*([}\]])", r"\1", s)
+    return s.strip()
+
+
+def _unwrap_note_wrapper(obj):
+    """Buka pembungkus ekspor aplikasi catatan HP seperti {"id": ..., "content": "{...}"}."""
+    if isinstance(obj, dict) and "content" in obj and not obj.get("scenes") and not obj.get("text"):
+        inner = obj.get("content")
+        if isinstance(inner, str) and inner.strip():
+            cleaned_inner = _clean_json_text(inner)
+            if cleaned_inner.startswith(("{", "[")):
+                return json.loads(cleaned_inner)
+    return obj
+
+
 def _parse_motion_json(raw_text: str) -> list:
-    """Bersihkan prefix /motion jika ikut tersalin di file JSON, lalu parse storyboard."""
-    cleaned = re.sub(r"^\s*/motion(?:@\w+)?\s*", "", raw_text, count=1, flags=re.I).strip()
-    raw = json.loads(cleaned)
+    """Parse storyboard JSON setelah dibersihkan dari karakter non-JSON & pembungkus Note."""
+    cleaned = _clean_json_text(raw_text)
+    raw = _unwrap_note_wrapper(json.loads(cleaned))
     items = raw if isinstance(raw, list) else [raw]
     out = []
     for it in items:
+        it = _unwrap_note_wrapper(it)
         if isinstance(it, dict) and it.get("scenes"):
             out.append({"title": it.get("title") or "Infografis", "scenes": it["scenes"]})
         elif isinstance(it, dict) and it.get("text"):
@@ -310,24 +333,23 @@ def _parse_motion_json(raw_text: str) -> list:
 
 
 def extract_motion(msg):
-    """Kembalikan list storyboard {'title', 'scenes'} jika memakai /motion atau file JSON ber-scenes."""
+    """Kembalikan list storyboard {'title', 'scenes'} jika memakai /motion atau file ber-scenes."""
     doc = msg.get("document")
     caption = (msg.get("caption") or "").strip()
-    fname = (doc.get("file_name") or "").lower() if doc else ""
 
-    if doc and (re.match(r"^/motion\b", caption, re.I) or fname.endswith(".json")):
+    if doc:
         raw_text = download_text(doc)
         if re.match(r"^/motion\b", caption, re.I):
             return _parse_motion_json(raw_text)
-        # Deteksi otomatis jika file .json berisi storyboard "scenes" walau tanpa caption /motion
-        try:
-            cleaned = re.sub(r"^\s*/motion(?:@\w+)?\s*", "", raw_text, count=1, flags=re.I).strip()
-            probe = json.loads(cleaned)
-            probe_list = probe if isinstance(probe, list) else [probe]
-            if any(isinstance(x, dict) and x.get("scenes") for x in probe_list):
-                return _parse_motion_json(raw_text)
-        except Exception:
-            pass
+        # Deteksi otomatis untuk file JSON storyboard (langsung maupun dari ekspor aplikasi Note)
+        cleaned = _clean_json_text(raw_text)
+        if ("scenes" in cleaned) and cleaned.startswith(("{", "[")):
+            try:
+                parsed = _parse_motion_json(raw_text)
+                if parsed:
+                    return parsed
+            except Exception:
+                pass
 
     text = msg.get("text") or ""
     m = re.match(r"^/motion(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
@@ -335,7 +357,8 @@ def extract_motion(msg):
         body = m.group(1).strip()
         if not body:
             return []
-        if body.startswith(("{", "[")):
+        cleaned_body = _clean_json_text(body)
+        if cleaned_body.startswith(("{", "[")):
             return _parse_motion_json(body)
         parsed = parse_text(body)
         return [_text_to_motion_storyboard(parsed["title"], parsed["text"])] if parsed else []
