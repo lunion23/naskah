@@ -221,30 +221,76 @@ def _pick_bgm():
     return sorted(files)[0] if files else None
 
 
+def _smart_truncate(text: str, max_chars: int = 95) -> str:
+    """Potong teks di batas kata tanpa memotong kata di tengah."""
+    clean = " ".join(text.strip().split())
+    if len(clean) <= max_chars:
+        return clean
+    cut = clean[:max_chars].rsplit(" ", 1)[0].rstrip(",;:-")
+    return (cut or clean[:max_chars]) + "..."
+
+
+def _extract_key_figure(sentence: str):
+    """Ambil angka/nominal penting dari kalimat (mis. Rp25.000 triliun, 90%, 15 bulan)."""
+    m = re.search(
+        r"(Rp\s?[0-9.,]+(?:\s?(?:ribu|juta|miliar|triliun|T|JT))?|[0-9.,]+\s?(?:%|persen|juta|miliar|triliun|tahun|bulan))",
+        sentence,
+        re.I,
+    )
+    return m.group(1).strip() if m else None
+
+
 def _text_to_motion_storyboard(title: str, text: str) -> dict:
-    """Ubah naskah teks biasa menjadi storyboard multi-adegan otomatis."""
+    """Ubah naskah teks biasa menjadi storyboard multi-adegan bersih tanpa placeholder."""
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
-    cycle = ["big_number", "three_cards", "bar_chart", "character_story", "dashboard", "calendar_grid"]
     scenes = []
+    icons = ["💡", "📌", "🔎", "⚖️", "💰", "📈"]
+
     for i, s in enumerate(sentences):
+        fig = _extract_key_figure(s)
         if i == 0:
             scenes.append({
                 "type": "big_number",
+                "theme": "dark",
                 "narration": s,
-                "data": {"headline": title.upper(), "subheadline": s[:70], "rays": True},
+                "data": {
+                    "headline": title.upper(),
+                    "subheadline": _smart_truncate(s, 95),
+                    "rays": True,
+                },
             })
-        elif i == len(sentences) - 1:
+        elif i == len(sentences) - 1 and len(sentences) > 1:
             scenes.append({
                 "type": "cta_closing",
+                "theme": "dark",
                 "narration": s,
-                "data": {"headline": title.upper(), "subheadline": s},
+                "data": {
+                    "headline": title.upper(),
+                    "subheadline": _smart_truncate(s, 110),
+                },
+            })
+        elif i % 2 == 1:
+            scenes.append({
+                "type": "statement_card",
+                "theme": "dark",
+                "narration": s,
+                "data": {
+                    "badge": f"FAKTA #{i}",
+                    "icon": icons[i % len(icons)],
+                    "highlight": fig or "",
+                    "body": _smart_truncate(s, 120),
+                },
             })
         else:
-            stype = cycle[i % len(cycle)]
             scenes.append({
-                "type": stype,
+                "type": "character_story",
+                "theme": "sky",
                 "narration": s,
-                "data": {"title": title.upper(), "headline": s[:42].upper(), "subheadline": s},
+                "data": {
+                    "card_value": fig or "",
+                    "quote": "" if fig else _smart_truncate(s, 95),
+                    "banner": _smart_truncate(title, 34),
+                },
             })
     return {"title": title, "scenes": scenes}
 

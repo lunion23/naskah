@@ -9,8 +9,8 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawWrappedText(text, x, y, maxWidth, lineHeight) {
-  const words = String(text || '').split(' ');
+function wrapLines(text, maxWidth) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
   let line = '', lines = [];
   for (const w of words) {
     const test = line ? line + ' ' + w : w;
@@ -22,6 +22,11 @@ function drawWrappedText(text, x, y, maxWidth, lineHeight) {
     }
   }
   if (line) lines.push(line);
+  return lines;
+}
+
+function drawWrappedText(text, x, y, maxWidth, lineHeight) {
+  const lines = wrapLines(text, maxWidth);
   lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
   return lines.length;
 }
@@ -35,6 +40,16 @@ function drawBackground(theme, t) {
     g.addColorStop(1, '#d9cbb3');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
+
+    // Awan lembut bergerak pelan
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    for (let i = 0; i < 3; i++) {
+      const cx = ((i * 420 + t * 18) % (W + 300)) - 150;
+      const cy = 220 + i * 110;
+      roundRect(cx, cy, 220, 56, 28);
+      ctx.fill();
+    }
+
     ctx.fillStyle = '#4e9a51';
     ctx.fillRect(0, 1460, W, H - 1460);
     ctx.strokeStyle = '#111';
@@ -94,11 +109,30 @@ function drawBackground(theme, t) {
   }
 }
 
-// 1. BIG NUMBER / HOOK
+// 1. BIG NUMBER / HOOK (posisi dinamis agar judul & subjudul tidak pernah bertabrakan)
 function renderBigNumber(data, p) {
-  const scale = 0.85 + 0.15 * easeOutBack(Math.min(p * 2.5, 1));
+  const scale = 0.88 + 0.12 * easeOutBack(Math.min(p * 2.5, 1));
+  const headline = String(data.headline || 'RP25.000 TRILIUN').toUpperCase();
+  const subheadline = data.subheadline ? String(data.subheadline) : '';
+
+  const headSize = headline.length > 42 ? 72 : (headline.length > 26 ? 86 : 102);
+  const headLineH = Math.round(headSize * 1.14);
+  const subSize = 42;
+  const subLineH = 54;
+
+  ctx.font = `900 ${headSize}px Montserrat, sans-serif`;
+  const headLines = wrapLines(headline, 920);
+
+  ctx.font = `700 ${subSize}px Montserrat, sans-serif`;
+  const subLines = subheadline ? wrapLines(subheadline, 880) : [];
+
+  const gap = subLines.length ? 44 : 0;
+  const totalH = headLines.length * headLineH + gap + subLines.length * subLineH;
+  const centerY = 740;
+  const startY = -totalH / 2 + headSize * 0.85;
+
   ctx.save();
-  ctx.translate(W / 2, 760);
+  ctx.translate(W / 2, centerY);
   ctx.scale(scale, scale);
 
   if (data.rays) {
@@ -115,14 +149,70 @@ function renderBigNumber(data, p) {
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#FFD600';
-  ctx.font = '900 104px Montserrat, sans-serif';
-  drawWrappedText(data.headline || 'RP25.000 TRILIUN', 0, -40, 940, 114);
+  ctx.font = `900 ${headSize}px Montserrat, sans-serif`;
+  headLines.forEach((l, i) => {
+    ctx.fillText(l, 0, startY + i * headLineH);
+  });
 
-  if (data.subheadline) {
+  if (subLines.length) {
+    const subStartY = startY + headLines.length * headLineH + gap - (headLineH - headSize);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '700 44px Montserrat, sans-serif';
-    drawWrappedText(data.subheadline, 0, 165, 900, 56);
+    ctx.font = `700 ${subSize}px Montserrat, sans-serif`;
+    subLines.forEach((l, i) => {
+      ctx.fillText(l, 0, subStartY + i * subLineH);
+    });
   }
+  ctx.restore();
+}
+
+// 1B. STATEMENT CARD (Kartu Narasi / Fakta untuk mode teks maupun storyboard)
+function renderStatementCard(data, p) {
+  const enter = easeOutBack(Math.min(p * 2.4, 1));
+  const cw = 900, ch = 760, cx = (W - cw) / 2, cy = 410 + (1 - enter) * 90;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(enter * 1.5, 1);
+
+  roundRect(cx, cy, cw, ch, 32);
+  ctx.fillStyle = 'rgba(13, 28, 60, 0.94)';
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#FFD600';
+  ctx.stroke();
+
+  // Badge atas
+  const badge = String(data.badge || 'POIN PENTING').toUpperCase();
+  roundRect(W / 2 - 220, cy - 36, 440, 72, 36);
+  ctx.fillStyle = '#FFD600';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#111';
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#111111';
+  ctx.font = '900 30px Montserrat, sans-serif';
+  ctx.fillText(badge, W / 2, cy + 10);
+
+  // Ikon visual
+  ctx.font = '115px sans-serif';
+  ctx.fillText(data.icon || '💡', W / 2, cy + 195);
+
+  // Angka / Sorotan utama jika ada
+  let textStartY = cy + 310;
+  if (data.highlight) {
+    ctx.fillStyle = '#FFD600';
+    ctx.font = '900 64px Montserrat, sans-serif';
+    const hLines = drawWrappedText(String(data.highlight).toUpperCase(), W / 2, cy + 295, cw - 110, 74);
+    textStartY = cy + 295 + hLines * 74 + 28;
+  }
+
+  // Isi kalimat utama
+  const body = data.body || data.subheadline || data.headline || '';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '800 42px Montserrat, sans-serif';
+  drawWrappedText(body, W / 2, textStartY, cw - 120, 56);
+
   ctx.restore();
 }
 
@@ -130,10 +220,10 @@ function renderBigNumber(data, p) {
 function renderThreeCards(data, p) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#FFD600';
-  ctx.font = '900 54px Montserrat, sans-serif';
-  ctx.fillText(data.title || 'SUMBER PENDAPATAN', W / 2, 260);
+  ctx.font = '900 52px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'SUMBER PENDAPATAN', W / 2, 230, 940, 62);
 
-  const cards = (data.cards || ['KATEGORI 1', 'KATEGORI 2', 'KATEGORI 3']).slice(0, 3);
+  const cards = (data.cards || ['POIN 1', 'POIN 2', 'POIN 3']).slice(0, 3);
   const icons = ['🧾', '🚢', '📦'];
   const cardW = 290, cardH = 620, gap = 32;
   const startX = (W - (cardW * 3 + gap * 2)) / 2;
@@ -163,8 +253,8 @@ function renderThreeCards(data, p) {
     ctx.stroke();
 
     ctx.fillStyle = '#111111';
-    ctx.font = '900 30px Montserrat, sans-serif';
-    ctx.fillText(String(label).toUpperCase(), cx + cardW / 2, cy + 528);
+    ctx.font = '900 28px Montserrat, sans-serif';
+    ctx.fillText(String(label).toUpperCase().slice(0, 14), cx + cardW / 2, cy + 528);
     ctx.restore();
   });
 
@@ -185,12 +275,12 @@ function renderThreeCards(data, p) {
 function renderBarChart(data, p) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = '900 50px Montserrat, sans-serif';
+  ctx.font = '900 48px Montserrat, sans-serif';
   ctx.fillText(data.title || 'GRAFIK DATA TAHUNAN', W / 2, 190);
 
   if (data.subtitle) {
     ctx.fillStyle = '#9BB8ED';
-    ctx.font = '700 32px Montserrat, sans-serif';
+    ctx.font = '700 30px Montserrat, sans-serif';
     ctx.fillText(data.subtitle, W / 2, 245);
   }
 
@@ -323,26 +413,41 @@ function renderCalculator(data, p) {
   ctx.fillText('=', cx + cw / 2, cy + 742);
 }
 
-// 5. CHARACTER STORY
+// 5. CHARACTER STORY (mendukung kartu angka/nilai ATAU gelembung cerita dari teks)
 function renderCharacterStory(data, p) {
   const walkX = W / 2 + Math.sin(p * Math.PI * 2) * 35;
   const bobY = Math.abs(Math.sin(p * Math.PI * 6)) * 12;
 
   const cardPop = easeOutBack(Math.min(p * 2.5, 1));
   ctx.save();
-  ctx.translate(W / 2, 460);
+  ctx.translate(W / 2, 450);
   ctx.scale(cardPop, cardPop);
-  roundRect(-290, -110, 580, 220, 24);
-  ctx.fillStyle = data.card_color || '#4F8A5B';
-  ctx.fill();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = '#111111';
-  ctx.stroke();
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '900 74px Montserrat, sans-serif';
-  ctx.fillText(data.card_value || 'Rp50.000', 0, 24);
+  if (data.card_value) {
+    roundRect(-310, -110, 620, 220, 24);
+    ctx.fillStyle = data.card_color || '#4F8A5B';
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#111111';
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '900 68px Montserrat, sans-serif';
+    ctx.fillText(data.card_value, 0, 24);
+  } else if (data.quote) {
+    roundRect(-410, -135, 820, 270, 28);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#111111';
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#111111';
+    ctx.font = '800 38px Montserrat, sans-serif';
+    drawWrappedText(data.quote, 0, -42, 740, 50);
+  }
   ctx.restore();
 
   const cy = 1140 - bobY;
@@ -381,8 +486,8 @@ function renderCharacterStory(data, p) {
     ctx.stroke();
     ctx.textAlign = 'center';
     ctx.fillStyle = '#111';
-    ctx.font = '900 36px Montserrat, sans-serif';
-    ctx.fillText(data.banner.toUpperCase(), W / 2, 866);
+    ctx.font = '900 34px Montserrat, sans-serif';
+    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 866);
   }
 }
 
@@ -496,25 +601,33 @@ function renderCalendarGrid(data, p) {
 function renderCtaClosing(data, p) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#FFD600';
-  ctx.font = '900 66px Montserrat, sans-serif';
-  drawWrappedText(data.headline || 'BAGAIMANA PENDAPATMU?', W / 2, 620, 920, 82);
+  ctx.font = '900 62px Montserrat, sans-serif';
+  const hLines = drawWrappedText(data.headline || 'BAGAIMANA PENDAPATMU?', W / 2, 560, 920, 76);
 
+  const subY = 560 + hLines * 76 + 34;
   ctx.fillStyle = '#DCE8FF';
   ctx.font = '700 36px Montserrat, sans-serif';
-  drawWrappedText(data.subheadline || 'Tulis di kolom komentar, dan follow untuk video selanjutnya!', W / 2, 850, 860, 48);
+  const sLines = drawWrappedText(
+    data.subheadline || 'Tulis di kolom komentar, dan follow untuk video selanjutnya!',
+    W / 2,
+    subY,
+    860,
+    48
+  );
 
-  roundRect(140, 1020, 380, 96, 48);
+  const btnY = Math.max(subY + sLines * 48 + 54, 980);
+  roundRect(140, btnY, 380, 96, 48);
   ctx.fillStyle = '#2B59A2';
   ctx.fill();
   ctx.fillStyle = '#FFF';
   ctx.font = '900 34px Montserrat, sans-serif';
-  ctx.fillText('💬 KOMENTAR', 330, 1080);
+  ctx.fillText('💬 KOMENTAR', 330, btnY + 60);
 
-  roundRect(560, 1020, 380, 96, 48);
+  roundRect(560, btnY, 380, 96, 48);
   ctx.fillStyle = '#E5B238';
   ctx.fill();
   ctx.fillStyle = '#111';
-  ctx.fillText('♥ FOLLOW', 750, 1080);
+  ctx.fillText('♥ FOLLOW', 750, btnY + 60);
 }
 
 // Loop Utama
@@ -528,6 +641,9 @@ function draw(t) {
   drawBackground(theme, t);
 
   switch (scene.type) {
+    case 'statement_card':
+      renderStatementCard(data, progress);
+      break;
     case 'three_cards':
       renderThreeCards(data, progress);
       break;

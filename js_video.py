@@ -240,25 +240,43 @@ def _concat_audios(audio_paths: list[Path], out_audio: Path):
 
 
 def _generate_ambient_wav(path: Path, duration: float = 16.0, sr: int = 22050) -> Path:
-    """Buat musik latar ambient lembut (Am - F - C - G) jika folder music/ kosong."""
+    """Buat musik latar explainer berirama lembut (Am - F - C - G + arpeggio marimba) jika folder music/ kosong."""
     chords = [
-        (110.00, 130.81, 164.81, 220.00),
-        (87.31, 110.00, 130.81, 174.61),
-        (130.81, 164.81, 196.00, 261.63),
-        (98.00, 123.47, 146.83, 196.00),
+        (110.00, 130.81, 164.81, 220.00),  # Am
+        (87.31, 110.00, 130.81, 174.61),   # F
+        (130.81, 164.81, 196.00, 261.63),  # C
+        (98.00, 123.47, 146.83, 196.00),   # G
     ]
     seg = duration / 4.0
+    step_dur = 0.25  # 120 BPM eighth-note pulse
     total_samples = int(duration * sr)
     frames = bytearray()
     for i in range(total_samples):
         t = i / sr
         c_idx = min(int(t // seg), 3)
+        chord = chords[c_idx]
         local_t = t - c_idx * seg
-        env = math.sin(math.pi * min(max(local_t / seg, 0.0), 1.0)) ** 0.5
-        val = 0.0
-        for f in chords[c_idx]:
-            val += math.sin(2.0 * math.pi * f * t) + 0.3 * math.sin(2.0 * math.pi * 2.0 * f * t)
-        sample = int(max(-1.0, min(1.0, (val / 5.5) * env * 0.65)) * 32767)
+        pad_env = math.sin(math.pi * min(max(local_t / seg, 0.0), 1.0)) ** 0.45
+
+        # Soft warm pad
+        pad = 0.0
+        for f in chord[:3]:
+            pad += math.sin(2.0 * math.pi * f * t)
+        pad = (pad / 3.2) * pad_env * 0.42
+
+        # Gentle rhythmic marimba pluck
+        step_idx = int(t // step_dur)
+        step_t = t - step_idx * step_dur
+        pluck_env = math.exp(-step_t * 11.0)
+        note_f = chord[step_idx % len(chord)] * 2.0
+        pluck = (math.sin(2.0 * math.pi * note_f * t) + 0.25 * math.sin(4.0 * math.pi * note_f * t)) * pluck_env * 0.35
+
+        # Subtle warm bass pulse every 1.0s
+        beat_t = t % 1.0
+        bass_env = math.exp(-beat_t * 4.5)
+        bass = math.sin(2.0 * math.pi * (chord[0] * 0.5) * t) * bass_env * 0.32
+
+        sample = int(max(-1.0, min(1.0, pad + pluck + bass)) * 32767)
         frames.extend(struct.pack("<hh", sample, sample))
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(2)
