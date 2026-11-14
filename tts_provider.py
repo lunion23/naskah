@@ -8,12 +8,14 @@ Pemilihan penyedia:
 
 Pengaturan ElevenLabs (environment variable):
   ELEVENLABS_API_KEY    kunci API (wajib)
-  ELEVENLABS_VOICE_ID   ID suara dari akun kamu (bawaan: pNInz6obpgDQGcFmaJgB)
+  ELEVENLABS_VOICE_ID   ID suara dari akun kamu (bawaan: 21m00Tcm4TlvDq8ikWAM)
   ELEVENLABS_MODEL      bawaan eleven_multilingual_v2 (kualitas terbaik); eleven_flash_v2_5 lebih murah
   ELEVENLABS_SPEED      0.7 - 1.2, bawaan 1.0
   ELEVENLABS_STABILITY  0 - 1, bawaan 0.5
   ELEVENLABS_SIMILARITY 0 - 1, bawaan 0.75
   ELEVENLABS_FORMAT     bawaan mp3_44100_128
+  TTS_FALLBACK          1 (bawaan) = bila ElevenLabs ditolak (kunci/kuota/suara/paket), seluruh video dibuat
+                        dengan Edge TTS dan bot memberi tahu; 0 = tampilkan error saja
 
 synthesize() menulis file suara dan mengembalikan waktu tiap kata [(mulai, selesai), ...] dalam detik
 (kosong bila tidak tersedia; pembuat video lalu memperkirakan sendiri).
@@ -28,7 +30,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
+FALLBACK_CODES = (401, 402, 404, 422)   # kode ElevenLabs yang memicu cadangan Edge TTS
+_notes = []                              # pesan untuk pengguna (dibaca bot lewat take_notes)
+DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
 DEFAULT_MODEL = "eleven_multilingual_v2"
 API_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
 
@@ -195,3 +199,38 @@ def synthesize(text, path, previous_text=None, next_text=None, edge_voice=None, 
     voice = edge_voice or os.getenv("EDGE_VOICE") or os.getenv("VOICE") or "id-ID-ArdiNeural"
     rate = edge_rate or os.getenv("EDGE_RATE") or os.getenv("RATE") or "+8%"
     return asyncio.run(_edge_async(text, path, voice, rate))
+
+
+def take_notes() -> list:
+    """Ambil (dan kosongkan) catatan, mis. pemberitahuan bahwa video memakai suara cadangan."""
+    out = list(_notes)
+    _notes.clear()
+    return out
+
+
+def _fallback_enabled() -> bool:
+    return os.getenv("TTS_FALLBACK", "1").strip() != "0"
+
+
+def synthesize_many(sentences, paths, edge_voice=None, edge_rate=None) -> list:
+    """Suara untuk satu video (banyak kalimat). Mengembalikan daftar waktu kata per kalimat.
+    Satu video selalu memakai satu penyedia: bila ElevenLabs ditolak, SEMUA kalimat dibuat ulang dengan Edge TTS."""
+    if provider() == "elevenlabs":
+        try:
+            marks = []
+            for i, (text, path) in enumerate(zip(sentences, paths)):
+                prev = sentences[i - 1] if i > 0 else None
+                nxt = sentences[i + 1] if i + 1 < len(sentences) else None
+                marks.append(_eleven(text, Path(path), prev, nxt))
+            return marks
+        except ElevenLabsError as e:
+            if not _fallback_enabled() or e.code not in FALLBACK_CODES:
+                raise
+            _notes.append(f"ElevenLabs ditolak ({e}). Video ini dibuat dengan suara Edge TTS. "
+                          "Perbaiki ELEVENLABS_VOICE_ID/paket, atau hapus ELEVENLABS_API_KEY untuk memakai Edge TTS terus.")
+    voice = edge_voice or os.getenv("EDGE_VOICE") or os.getenv("VOICE") or "id-ID-ArdiNeural"
+    rate = edge_rate or os.getenv("EDGE_RATE") or os.getenv("RATE") or "+8%"
+    try:
+        return [asyncio.run(_edge_async(t, Path(p), voice, rate)) for t, p in zip(sentences, paths)]
+    except ImportError:
+        raise RuntimeError("Suara cadangan Edge TTS tidak tersedia karena paket edge-tts belum terpasang.")

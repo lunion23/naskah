@@ -38,7 +38,6 @@ import re
 import sys
 from pathlib import Path
 
-import edge_tts
 import numpy as np
 import requests
 from moviepy.editor import (
@@ -53,6 +52,9 @@ from moviepy.editor import (
 from moviepy.audio.AudioClip import AudioArrayClip, CompositeAudioClip
 from moviepy.audio.fx import all as afx
 from PIL import Image, ImageDraw, ImageFont
+
+import tts_provider
+from subtitles_export import safe_export
 
 # ---------------- KONFIGURASI ----------------
 W, H, FPS = 1080, 1920, 30
@@ -84,25 +86,6 @@ OUT_DIR.mkdir(exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
 
 
-# ---------------- PEMETAAN KATA KUNCI PINTAR ----------------
-KEYWORD_MAPPING = {
-    "durian": "durian fruit food",
-    "soda": "cola soft drink bubbles",
-    "kembung": "stomach pain health care",
-    "lambung": "stomach anatomy medical",
-    "hoax": "warning caution red sign",
-    "kesehatan": "healthy lifestyle medical",
-    "makanan": "delicious food eating"
-}
-
-def get_smart_keyword(original_keyword: str) -> str:
-    key_lower = original_keyword.lower()
-    for k, v in KEYWORD_MAPPING.items():
-        if k in key_lower:
-            return v
-    return original_keyword
-
-
 # ---------------- UTILITAS ----------------
 def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50] or "video"
@@ -122,30 +105,11 @@ def load_font(size: int):
 
 
 # ---------------- 1. SUARA ----------------
-async def _tts(text: str, path: Path):
-    """Simpan suara ke path dan kembalikan waktu tiap kata [(mulai, selesai), ...] dalam detik."""
-    try:
-        comm = edge_tts.Communicate(text, VOICE, rate=RATE, boundary="WordBoundary")
-    except TypeError:  # edge-tts versi lama tidak punya parameter boundary
-        comm = edge_tts.Communicate(text, VOICE, rate=RATE)
-    marks = []
-    with open(path, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                a = chunk["offset"] / 1e7
-                marks.append((a, a + chunk["duration"] / 1e7))
-    return marks
-
-
 def make_voice(sentences, workdir: Path):
-    """Satu file audio per kalimat supaya durasi subtitle akurat. Mengembalikan (paths, marks)."""
-    paths, all_marks = [], []
-    for i, s in enumerate(sentences):
-        p = workdir / f"s{i:02d}.mp3"
-        all_marks.append(asyncio.run(_tts(s, p)))
-        paths.append(p)
+    """Satu file audio per kalimat supaya durasi subtitle akurat. Mengembalikan (paths, marks).
+    Penyedia suara (ElevenLabs atau Edge TTS) diatur di tts_provider.py."""
+    paths = [workdir / f"s{i:02d}.mp3" for i in range(len(sentences))]
+    all_marks = tts_provider.synthesize_many(sentences, paths, edge_voice=VOICE, edge_rate=RATE)
     return paths, all_marks
 
 
@@ -426,20 +390,14 @@ def make_music(duration: float):
 # ---------------- 4. RAKIT VIDEO ----------------
 def build_video(item: dict, index: int):
     title = item["title"]
-    
-    # Menerapkan smart keyword agar video stok tidak melenceng jauh
-    raw_keyword = item.get("keyword", "nature")
-    keyword = get_smart_keyword(raw_keyword)
-    
+    keyword = item.get("keyword", "nature")
     sentences = split_sentences(item["text"])
     slug = f"{index:02d}-{slugify(title)}"
     workdir = CACHE_DIR / slug
     workdir.mkdir(exist_ok=True)
 
     print(f"\n=== [{index}] {title} ===")
-    print(f"• Mengambil video stok untuk keyword: '{keyword}' (asli: '{raw_keyword}')")
-    print("• Membuat suara...")
-    
+    print(f"• Membuat suara ({tts_provider.label()})...")
     audio_paths, all_marks = make_voice(sentences, workdir)
     audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(audio_clips)
@@ -486,6 +444,7 @@ def build_video(item: dict, index: int):
         threads=4,
         logger=None,
     )
+    safe_export(title, sentences, [ac.duration for ac in audio_clips], all_marks, total, out)
     print(f"✔ Selesai: {out}")
     return out
 

@@ -26,6 +26,9 @@ from pathlib import Path
 
 import requests
 
+import tts_provider
+import subtitles_export
+
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED = {x.strip() for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",") if x.strip()}
 MAX_ITEMS = 10  # batas naskah per pesan
@@ -122,6 +125,34 @@ def send_video(chat_id, path, caption):
         )
 
 
+def send_document(chat_id, path, caption=""):
+    with open(path, "rb") as f:
+        tg("sendDocument", data={"chat_id": chat_id, "caption": caption[:1000]}, files={"document": f})
+
+
+def send_extras(chat_id, video_path):
+    """Kirim catatan suara (bila ada), lalu file subtitle (.srt) dan waktu (.json) di samping video."""
+    for note in tts_provider.take_notes():
+        send(chat_id, "ℹ️ " + note)
+
+    notes = subtitles_export.take_notes()
+    for note in notes:
+        send(chat_id, "⚠️ " + note)
+
+    found = False
+    for ext, caption in ((".srt", "Subtitle (SRT)"), (".json", "Waktu per kalimat dan kata (JSON)")):
+        p = Path(video_path).with_suffix(ext)
+        if p.exists():
+            found = True
+            try:
+                send_document(chat_id, p, caption)
+            except Exception as e:
+                traceback.print_exc()
+                send(chat_id, f"⚠️ Gagal mengirim {p.name}: {e}")
+    if not found and not notes:
+        send(chat_id, "⚠️ File SRT/JSON tidak ditemukan (kemungkinan kode di repo belum versi terbaru).")
+
+
 # ---------------- Parsing naskah ----------------
 def parse_text(text):
     title = keyword = None
@@ -208,6 +239,7 @@ def handle_react(chat_id, items):
             Path("output").mkdir(exist_ok=True)
             out = build_react_video(item, Path("output") / f"react-{k:02d}.mp4", Path("cache") / f"react{k}")
             send_video(chat_id, out, f"{item['title']} #Shorts")
+            send_extras(chat_id, out)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")
@@ -303,6 +335,7 @@ def handle_message(msg):
             send(chat_id, f"({n}/{len(items)}) Memproses: {item['title']}")
             out = build_video(item, next(counter))
             send_video(chat_id, out, f"{item['title']} #Shorts")
+            send_extras(chat_id, out)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")

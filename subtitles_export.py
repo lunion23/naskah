@@ -110,12 +110,25 @@ def export_subtitles(title, sentences, durations, all_marks, total, video_path):
     return srt_path, json_path
 
 
+_notes = []  # pesan untuk pengguna, mis. saat ekspor SRT/JSON gagal (dibaca bot lewat take_notes)
+
+
+def take_notes() -> list:
+    """Ambil (dan kosongkan) catatan ekspor, mis. pemberitahuan bahwa SRT/JSON gagal dibuat."""
+    out = list(_notes)
+    _notes.clear()
+    return out
+
+
 def safe_export(title, sentences, durations, all_marks, total, video_path):
-    """Seperti export_subtitles, tetapi tidak pernah menggagalkan pembuatan video."""
+    """Seperti export_subtitles, tetapi tidak pernah menggagalkan pembuatan video.
+    Kegagalan dicatat lewat take_notes() supaya bot bisa memberitahu pengguna, bukan cuma log GitHub."""
     try:
         paths = export_subtitles(title, sentences, durations, all_marks, total, video_path)
         print(f"• Subtitle dan waktu: {paths[0].name}, {paths[1].name}")
         return paths
     except Exception as e:
-        print(f"[!] Gagal membuat SRT/JSON: {e}")
+        msg = f"Gagal membuat SRT/JSON untuk '{title}': {type(e).__name__}: {e}"
+        print(f"[!] {msg}")
+        _notes.append(msg)
         return None

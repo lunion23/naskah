@@ -17,6 +17,8 @@ from moviepy.editor import AudioFileClip, concatenate_audioclips
 
 import auto_shorts as AS
 import js_video
+import tts_provider
+from subtitles_export import safe_export
 
 MAX_SECONDS = 90
 LABEL = os.getenv("REACT_LABEL", "FAKTA UNIK")   # teks kecil di atas judul
@@ -171,7 +173,7 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
     if not sentences:
         raise ValueError("Naskah kosong.")
 
-    print("• Membuat suara dan waktu kata...")
+    print(f"• Membuat suara dan waktu kata ({tts_provider.label()})...")
     audio_paths, all_marks = AS.make_voice(sentences, workdir)
     clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(clips)
@@ -194,4 +196,6 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
     audio.write_audiofile(str(mix), fps=44100, logger=None)
 
     html = make_page(item["title"], words, total, item.get("label"))
-    return js_video.render_html_to_mp4(html, total, mix, out_path, workdir)
+    out = js_video.render_html_to_mp4(html, total, mix, out_path, workdir)
+    safe_export(item["title"], sentences, [c.duration for c in clips], all_marks, total, out)
+    return out
