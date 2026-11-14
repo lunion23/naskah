@@ -1,4 +1,11 @@
 """
+CloudPad Note
+Title: bot
+Date: 2026-11-15 01:54:39
+Tags: lokal, py
+"""
+
+"""
 Bot Telegram -> pembuat Shorts -> kirim balik ke Telegram.
 Dijalankan oleh GitHub Actions (lihat .github/workflows/shorts.yml).
 
