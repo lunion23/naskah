@@ -177,13 +177,14 @@ def parse_directives(code: str):
 def build_html(code: str, scenes=None, subtitles=None) -> str:
     if re.search(r"<\s*(!doctype|html|body|canvas|div|svg)\b", code[:3000], re.I):
         return code
-    return TEMPLATE % {
-        "w": W,
-        "h": H,
-        "scenes_json": json.dumps(scenes or [], ensure_ascii=False),
-        "subtitles_json": json.dumps(subtitles or [], ensure_ascii=False),
-        "code": code.replace("</script", "<\\/script"),
-    }
+    html = (
+        TEMPLATE
+        .replace("%(w)d", str(W))
+        .replace("%(h)d", str(H))
+        .replace("%(scenes_json)s", json.dumps(scenes or [], ensure_ascii=False))
+        .replace("%(subtitles_json)s", json.dumps(subtitles or [], ensure_ascii=False))
+    )
+    return html.replace("%(code)s", code.replace("</script", "<\\/script"), 1)
 
 
 def ffmpeg_bin() -> str:
