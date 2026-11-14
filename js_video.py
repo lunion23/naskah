@@ -82,16 +82,26 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
   html,body{margin:0;background:#060d1f;overflow:hidden;font-family:'Montserrat',sans-serif}
   canvas{display:block}
   #sub-box{
-    position:fixed;left:64px;right:64px;bottom:145px;text-align:center;
-    font-size:50px;font-weight:900;line-height:1.25;text-transform:uppercase;
-    color:#ffffff;letter-spacing:0.5px;pointer-events:none;
-    text-shadow:0 4px 0 #000,-3px -3px 0 #000,3px -3px 0 #000,-3px 3px 0 #000,3px 3px 0 #000,0 8px 22px rgba(0,0,0,0.85);
+    position:fixed;left:56px;right:56px;bottom:230px;text-align:center;
+    font-size:48px;font-weight:900;line-height:1.35;text-transform:uppercase;
+    color:#ffffff;letter-spacing:0.6px;pointer-events:none;z-index:20;
+    display:flex;justify-content:center;align-items:center;
   }
-  #sub-box .active{color:#FFD600}
+  #sub-pill{
+    display:inline-block;max-width:96%;
+    background:rgba(6, 13, 31, 0.78);
+    border:3px solid rgba(255, 214, 0, 0.45);
+    border-radius:22px;
+    padding:14px 28px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.65);
+    text-shadow:0 3px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000;
+  }
+  #sub-box .word{display:inline-block;margin:0 6px;transition:transform 0.08s ease-out}
+  #sub-box .active{color:#FFD600;transform:scale(1.08)}
 </style></head>
 <body>
 <canvas id="canvas" width="%(w)d" height="%(h)d"></canvas>
-<div id="sub-box"></div>
+<div id="sub-box"><div id="sub-pill"></div></div>
 <script>
   var canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),W=%(w)d,H=%(h)d;
   window.SCENES = %(scenes_json)s;
@@ -121,19 +131,27 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 
   window.__updateSubtitle = t => {
     const box = document.getElementById('sub-box');
-    if (!box || !window.SUBTITLES.length) return;
+    const pill = document.getElementById('sub-pill');
+    if (!box || !pill || !window.SUBTITLES.length) return;
     const cur = window.SUBTITLES.find(s => t >= s.start && t < s.end);
-    if (!cur || !cur.words.length) { box.innerHTML = ''; return; }
-    const chunkSize = 4;
-    let activeIdx = cur.words.findIndex(w => t >= w.start && t < w.end);
-    if (activeIdx < 0) activeIdx = t >= cur.end ? cur.words.length - 1 : 0;
+    if (!cur || !cur.words.length) { box.style.display = 'none'; pill.innerHTML = ''; return; }
+    box.style.display = 'flex';
+    const chunkSize = 3;
+    let activeIdx = cur.words.findIndex(w => t >= w.start && t <= w.end);
+    if (activeIdx < 0) {
+      // Pilih kata terakhir yang sudah mulai diucapkan agar tidak lompat ke 0 saat jeda napas
+      for (let i = cur.words.length - 1; i >= 0; i--) {
+        if (t >= cur.words[i].start) { activeIdx = i; break; }
+      }
+      if (activeIdx < 0) activeIdx = 0;
+    }
     const chunkStart = Math.floor(activeIdx / chunkSize) * chunkSize;
     const slice = cur.words.slice(chunkStart, chunkStart + chunkSize);
-    box.innerHTML = slice.map((w, idx) => {
+    pill.innerHTML = slice.map((w, idx) => {
       const isAct = (chunkStart + idx) === activeIdx;
       const txt = escHtml(w.text);
-      return isAct ? '<span class="active">' + txt + '</span>' : txt;
-    }).join(' ');
+      return '<span class="word' + (isAct ? ' active' : '') + '">' + txt + '</span>';
+    }).join('');
   };
 </script>
 <script>

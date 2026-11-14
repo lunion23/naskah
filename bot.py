@@ -246,12 +246,14 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
     scenes = []
     icons = ["💡", "📌", "🔎", "⚖️", "💰", "📈"]
 
+    bright_themes = ["cream", "mint", "lavender", "coral"]
     for i, s in enumerate(sentences):
         fig = _extract_key_figure(s)
+        th = bright_themes[i % len(bright_themes)]
         if i == 0:
             scenes.append({
                 "type": "big_number",
-                "theme": "dark",
+                "theme": "cream",
                 "narration": s,
                 "data": {
                     "headline": title.upper(),
@@ -262,7 +264,7 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
         elif i == len(sentences) - 1 and len(sentences) > 1:
             scenes.append({
                 "type": "cta_closing",
-                "theme": "dark",
+                "theme": "coral",
                 "narration": s,
                 "data": {
                     "headline": title.upper(),
@@ -272,7 +274,7 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
         elif i % 2 == 1:
             scenes.append({
                 "type": "statement_card",
-                "theme": "dark",
+                "theme": th,
                 "narration": s,
                 "data": {
                     "badge": f"FAKTA #{i}",
