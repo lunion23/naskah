@@ -336,30 +336,98 @@ def render_frames(html: str, seconds: float, frames_dir: Path):
         browser.close()
 
 
-def encode_video(frames: Path, audio, seconds: float, out_path: Path, bgm_path: Path = None):
-    """Gabungkan frame JPG, suara narasi, dan backsound menjadi MP4."""
+def _generate_scene_sfx_wav(path: Path, timed_scenes: list[dict], total_seconds: float, sr: int = 22050) -> Path:
+    """Buat trek efek suara transisi (whoosh halus + pop/chime) tepat di awal setiap adegan."""
+    total_samples = int(total_seconds * sr)
+    buf = [0.0] * total_samples
+    rng = random.Random(42)
+
+    for idx, sc in enumerate(timed_scenes):
+        st = float(sc.get("start", 0.0))
+        start_i = int(st * sr)
+        # 1) Soft whoosh (0.28s) pada perpindahan adegan
+        if idx > 0:
+            w_len = int(0.28 * sr)
+            for k in range(w_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                u = k / w_len
+                env = math.sin(math.pi * u) ** 1.4
+                noise = rng.uniform(-1.0, 1.0)
+                sweep = math.sin(2.0 * math.pi * (180.0 + 420.0 * u) * (k / sr))
+                buf[pos] += (noise * 0.16 + sweep * 0.12) * env
+
+        # 2) Crisp pop / chime (0.22s) saat elemen visual muncul
+        p_len = int(0.22 * sr)
+        base_f = 587.33 if idx == 0 else (783.99 if idx == len(timed_scenes) - 1 else 659.25)
+        for k in range(p_len):
+            pos = start_i + int(0.05 * sr) + k
+            if pos >= total_samples:
+                break
+            kt = k / sr
+            env = math.exp(-kt * 18.0)
+            tone = math.sin(2.0 * math.pi * base_f * kt) + 0.35 * math.sin(2.0 * math.pi * base_f * 1.5 * kt)
+            buf[pos] += tone * env * 0.24
+
+    frames = bytearray()
+    for v in buf:
+        s = int(max(-1.0, min(1.0, v)) * 32767)
+        frames.extend(struct.pack("<hh", s, s))
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(bytes(frames))
+    return path
+
+
+def encode_video(frames: Path, audio, seconds: float, out_path: Path, bgm_path: Path = None, sfx_path: Path = None):
+    """Gabungkan frame JPG, suara narasi, backsound, dan SFX transisi menjadi MP4."""
     cmd = [ffmpeg_bin(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", str(frames / "f%05d.jpg")]
-    if audio:
+    has_audio = bool(audio)
+    has_bgm = bool(bgm_path and Path(bgm_path).exists())
+    has_sfx = bool(sfx_path and Path(sfx_path).exists())
+
+    in_idx = 1
+    audio_idx = bgm_idx = sfx_idx = None
+    if has_audio:
         cmd += ["-i", str(audio)]
-    if bgm_path and Path(bgm_path).exists():
+        audio_idx = in_idx
+        in_idx += 1
+    if has_bgm:
         cmd += ["-stream_loop", "-1", "-i", str(bgm_path)]
+        bgm_idx = in_idx
+        in_idx += 1
+    if has_sfx:
+        cmd += ["-i", str(sfx_path)]
+        sfx_idx = in_idx
+        in_idx += 1
 
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "21", "-preset", "veryfast", "-r", str(FPS)]
 
-    if audio and bgm_path and Path(bgm_path).exists():
-        cmd += [
-            "-filter_complex",
-            "[1:a]apad[voice];[2:a]volume=0.12[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-            "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k",
-        ]
-    elif audio:
-        cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
+    if has_audio:
+        filters = [f"[{audio_idx}:a]apad[voice]"]
+        mix_inputs = ["[voice]"]
+        if has_bgm:
+            filters.append(f"[{bgm_idx}:a]volume=0.12[bgm]")
+            mix_inputs.append("[bgm]")
+        if has_sfx:
+            filters.append(f"[{sfx_idx}:a]volume=0.35[sfx]")
+            mix_inputs.append("[sfx]")
+        if len(mix_inputs) > 1:
+            filters.append(f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[aout]")
+            cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
+        else:
+            cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
 
     cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
     subprocess.run(cmd, check=True)
 
 
-def render_html_to_mp4(html: str, seconds: float, audio, out_path: Path, workdir: Path, bgm_path: Path = None) -> Path:
+def render_html_to_mp4(
+    html: str, seconds: float, audio, out_path: Path, workdir: Path, bgm_path: Path = None, sfx_path: Path = None
+) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
     ensure_browser()
     frames = workdir / "frames"
@@ -371,7 +439,7 @@ def render_html_to_mp4(html: str, seconds: float, audio, out_path: Path, workdir
     render_frames(html, seconds, frames)
 
     print("• Menggabungkan video...")
-    encode_video(frames, audio, seconds, out_path, bgm_path=bgm_path)
+    encode_video(frames, audio, seconds, out_path, bgm_path=bgm_path, sfx_path=sfx_path)
     shutil.rmtree(frames, ignore_errors=True)
     return out_path
 
@@ -467,9 +535,12 @@ def build_motion_video(
         combined_audio = workdir / "full_narasi.mp3"
         _concat_audios(ordered_audio_paths, combined_audio)
 
+    sfx_track = _generate_scene_sfx_wav(workdir / "scene_sfx.wav", timed_scenes, total_seconds)
     bgm = _pick_or_make_bgm(workdir, bgm_path=bgm_path)
     html = build_html(render_code, scenes=timed_scenes, subtitles=subtitles)
-    res = render_html_to_mp4(html, total_seconds, combined_audio, out_path, workdir, bgm_path=bgm)
+    res = render_html_to_mp4(
+        html, total_seconds, combined_audio, out_path, workdir, bgm_path=bgm, sfx_path=sfx_track
+    )
 
     if export_sentences:
         safe_export(title, export_sentences, export_durations, export_marks, total_seconds, out_path)
