@@ -1,0 +1,130 @@
+{
+  "title": "Sebesar Apa Uang Rp25.000 Triliun?",
+  "scenes": [
+    {
+      "type": "big_number",
+      "theme": "dark",
+      "narration": "Pernahkah kamu membayangkan, sebesar apa sebenarnya uang dua puluh lima ribu triliun rupiah?",
+      "data": {
+        "headline": "RP25.000 TRILIUN",
+        "subheadline": "SEBESAR APA UANG INI?",
+        "rays": true
+      }
+    },
+    {
+      "type": "three_cards",
+      "theme": "dark",
+      "narration": "Seluruh pendapatan negara kita berasal dari pajak, bea masuk, dan cukai setiap tahunnya.",
+      "data": {
+        "title": "SUMBER KAS NEGARA",
+        "cards": [
+          "PAJAK",
+          "BEA MASUK",
+          "CUKAI"
+        ],
+        "icons": [
+          "🧾",
+          "🚢",
+          "📦"
+        ],
+        "badge": "SEJAK 2010 →"
+      }
+    },
+    {
+      "type": "bar_chart",
+      "theme": "dark",
+      "narration": "Dari tahun dua ribu delapan belas hingga dua ribu dua puluh tiga, pendapatan negara terus naik menembus dua ribu triliun per tahun.",
+      "data": {
+        "title": "PENDAPATAN NEGARA",
+        "subtitle": "PAJAK + BEA MASUK + CUKAI / TAHUN",
+        "summary_label": "TOTAL AKUMULASI",
+        "summary_value": "Rp11.735,7 T",
+        "target": 2000,
+        "target_label": "Rp2.000 T",
+        "source": "Kemenkeu RI",
+        "bars": [
+          {
+            "label": "2018",
+            "value": 1521,
+            "display": "Rp1.521 T"
+          },
+          {
+            "label": "2019",
+            "value": 1546,
+            "display": "Rp1.546 T"
+          },
+          {
+            "label": "2020",
+            "value": 1285,
+            "display": "Rp1.285 T"
+          },
+          {
+            "label": "2021",
+            "value": 1547,
+            "display": "Rp1.547 T",
+            "highlight": true
+          },
+          {
+            "label": "2022",
+            "value": 2054,
+            "display": "Rp2.054 T",
+            "highlight": true
+          },
+          {
+            "label": "2023",
+            "value": 2163,
+            "display": "Rp2.163 T",
+            "highlight": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "character_story",
+      "theme": "sky",
+      "narration": "Sekarang bayangkan Rani pergi ke pasar membawa uang lima puluh ribu rupiah untuk belanja seminggu penuh.",
+      "data": {
+        "card_value": "Rp50.000",
+        "card_color": "#4F8A5B",
+        "banner": "BELANJA SEMINGGU PENUH"
+      }
+    },
+    {
+      "type": "dashboard",
+      "theme": "dark",
+      "narration": "Jika gaji Rani lima belas juta rupiah sebulan dan biaya hidupnya hanya satu setengah juta, ia bisa menabung sangat cepat.",
+      "data": {
+        "title": "DASHBOARD KEUANGAN RANI",
+        "main_value": "Rp15.000.000",
+        "items": [
+          "MAKAN",
+          "LISTRIK",
+          "INTERNET",
+          "JALAN-JALAN"
+        ],
+        "sub_value": "Rp1.500.000"
+      }
+    },
+    {
+      "type": "calendar_grid",
+      "theme": "dark",
+      "narration": "Hanya dalam lima belas bulan menabung sepuluh juta per bulan, rumah seharga seratus lima puluh juta sudah lunas total.",
+      "data": {
+        "title": "KALENDER MENABUNG",
+        "count": 15,
+        "unit_label": "10 JT ✓",
+        "formula": "Rp10 JT × 15 = Rp150 JT",
+        "stamp": "LUNAS TOTAL"
+      }
+    },
+    {
+      "type": "cta_closing",
+      "theme": "dark",
+      "narration": "Menurutmu, mungkinkah Indonesia bebas dari korupsi? Tulis di kolom komentar dan follow untuk video selanjutnya!",
+      "data": {
+        "headline": "MUNGKINKAH INDONESIA TANPA KORUPSI?",
+        "subheadline": "Tulis di kolom komentar, dan follow untuk video selanjutnya!"
+      }
+    }
+  ]
+}

@@ -27,12 +27,12 @@ from pathlib import Path
 import requests
 
 import tts_provider
-import subtitles_export
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED = {x.strip() for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",") if x.strip()}
 MAX_ITEMS = 10  # batas naskah per pesan
 MAX_REACT_ITEMS = 3  # batas naskah per pesan untuk mode /react (render lebih lama)
+MAX_MOTION_ITEMS = 3  # batas naskah per pesan untuk mode /motion
 
 API = f"https://api.telegram.org/bot{TOKEN}"
 FILE_API = f"https://api.telegram.org/file/bot{TOKEN}"
@@ -65,7 +65,9 @@ HELP = (
     "Video dari kode JavaScript:\n"
     "Kirim  /js  diikuti kode, atau kirim file .js / .html. Ketik /jshelp untuk panduan.\n\n"
     "Video animasi React dari naskah:\n"
-    "Kirim  /react  diikuti naskah (format sama seperti di atas). Animasi sinkron dengan suara."
+    "Kirim  /react  diikuti naskah (format sama seperti di atas). Animasi sinkron dengan suara.\n\n"
+    "Video infografis & animasi 2D (/motion):\n"
+    "Kirim  /motion  diikuti naskah atau file .json storyboard. Ketik /motionhelp untuk panduan."
 )
 
 REACT_HELP = (
@@ -134,23 +136,13 @@ def send_extras(chat_id, video_path):
     """Kirim catatan suara (bila ada), lalu file subtitle (.srt) dan waktu (.json) di samping video."""
     for note in tts_provider.take_notes():
         send(chat_id, "ℹ️ " + note)
-
-    notes = subtitles_export.take_notes()
-    for note in notes:
-        send(chat_id, "⚠️ " + note)
-
-    found = False
     for ext, caption in ((".srt", "Subtitle (SRT)"), (".json", "Waktu per kalimat dan kata (JSON)")):
         p = Path(video_path).with_suffix(ext)
         if p.exists():
-            found = True
             try:
                 send_document(chat_id, p, caption)
-            except Exception as e:
+            except Exception:
                 traceback.print_exc()
-                send(chat_id, f"⚠️ Gagal mengirim {p.name}: {e}")
-    if not found and not notes:
-        send(chat_id, "⚠️ File SRT/JSON tidak ditemukan (kemungkinan kode di repo belum versi terbaru).")
 
 
 # ---------------- Parsing naskah ----------------
@@ -204,6 +196,127 @@ def read_document(doc):
     else:
         items = [parse_text(content)]
     return [i for i in items if i]
+
+
+
+MOTION_HELP = (
+    "Mode /motion: video infografis & animasi 2D vertikal (gaya explainer).\n\n"
+    "Cara 1 (Teks langsung):\n"
+    "/motion\n"
+    "judul: Anggaran Negara\n"
+    "Tahukah kamu seberapa besar uang 25.000 triliun rupiah? ...\n\n"
+    "Cara 2 (Storyboard JSON lengkap):\n"
+    "Kirim file .json berisi daftar adegan (scenes) dengan caption /motion."
+)
+
+
+def _pick_bgm():
+    """Ambil file musik latar dari folder music/ (jika ada)."""
+    music_dir = Path("music")
+    if not music_dir.exists():
+        return None
+    files = []
+    for ext in ("*.mp3", "*.wav", "*.m4a", "*.ogg"):
+        files.extend(music_dir.glob(ext))
+    return sorted(files)[0] if files else None
+
+
+def _text_to_motion_storyboard(title: str, text: str) -> dict:
+    """Ubah naskah teks biasa menjadi storyboard multi-adegan otomatis."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    cycle = ["big_number", "three_cards", "bar_chart", "character_story", "dashboard", "calendar_grid"]
+    scenes = []
+    for i, s in enumerate(sentences):
+        if i == 0:
+            scenes.append({
+                "type": "big_number",
+                "narration": s,
+                "data": {"headline": title.upper(), "subheadline": s[:70], "rays": True},
+            })
+        elif i == len(sentences) - 1:
+            scenes.append({
+                "type": "cta_closing",
+                "narration": s,
+                "data": {"headline": title.upper(), "subheadline": s},
+            })
+        else:
+            stype = cycle[i % len(cycle)]
+            scenes.append({
+                "type": stype,
+                "narration": s,
+                "data": {"title": title.upper(), "headline": s[:42].upper(), "subheadline": s},
+            })
+    return {"title": title, "scenes": scenes}
+
+
+def extract_motion(msg):
+    """Kembalikan list storyboard {'title', 'scenes'} jika memakai /motion, selain itu None."""
+    doc = msg.get("document")
+    caption = msg.get("caption") or ""
+    if doc and re.match(r"^/motion\b", caption, re.I):
+        raw = json.loads(download_text(doc))
+        items = raw if isinstance(raw, list) else [raw]
+        out = []
+        for it in items:
+            if isinstance(it, dict) and it.get("scenes"):
+                out.append({"title": it.get("title") or "Infografis", "scenes": it["scenes"]})
+            elif isinstance(it, dict) and it.get("text"):
+                out.append(_text_to_motion_storyboard(it.get("title") or "Infografis", it["text"]))
+        return out
+
+    text = msg.get("text") or ""
+    m = re.match(r"^/motion(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
+    if m:
+        body = m.group(1).strip()
+        if not body:
+            return []
+        if body.startswith(("{", "[")):
+            raw = json.loads(body)
+            items = raw if isinstance(raw, list) else [raw]
+            return [{"title": x.get("title") or "Infografis", "scenes": x["scenes"]} for x in items if x.get("scenes")]
+        parsed = parse_text(body)
+        return [_text_to_motion_storyboard(parsed["title"], parsed["text"])] if parsed else []
+    return None
+
+
+def handle_motion(chat_id, items):
+    if RENDERER == "termux":
+        send(chat_id, NO_BROWSER)
+        return
+    if not items:
+        send(chat_id, MOTION_HELP)
+        return
+
+    renderer_path = Path("motion_renderer.js")
+    if not renderer_path.exists():
+        send(chat_id, "File motion_renderer.js belum ada di root repository.")
+        return
+
+    render_code = renderer_path.read_text(encoding="utf-8")
+    bgm_path = _pick_bgm()
+    items = items[:MAX_MOTION_ITEMS]
+    send(chat_id, f"🎬 Membuat {len(items)} video infografis 2D...")
+
+    from js_video import build_motion_video
+
+    for n, item in enumerate(items, 1):
+        try:
+            send(chat_id, f"({n}/{len(items)}) Merender: {item['title']} ({len(item['scenes'])} adegan)")
+            k = next(counter)
+            Path("output").mkdir(exist_ok=True)
+            out = build_motion_video(
+                item["scenes"],
+                render_code,
+                Path("output") / f"motion-{k:02d}.mp4",
+                Path("cache") / f"motion{k}",
+                title=item["title"],
+                bgm_path=bgm_path,
+            )
+            send_video(chat_id, out, f"{item['title']} #Shorts")
+            send_extras(chat_id, out)
+        except Exception as e:
+            traceback.print_exc()
+            send(chat_id, f"Gagal membuat '{item['title']}': {str(e)[:300]}")
 
 
 # ---------------- Mode /react: naskah -> video animasi React ----------------
@@ -291,6 +404,18 @@ def handle_message(msg):
         return
     if text.startswith("/jshelp"):
         send(chat_id, JS_HELP)
+        return
+    if text.startswith("/motionhelp"):
+        send(chat_id, MOTION_HELP)
+        return
+
+    try:
+        motion_items = extract_motion(msg)
+    except Exception as e:
+        send(chat_id, f"Storyboard /motion tidak valid: {e}")
+        return
+    if motion_items is not None:
+        handle_motion(chat_id, motion_items)
         return
 
     try:
