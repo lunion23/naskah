@@ -697,18 +697,354 @@ function renderCalculator(data, p, t, pal) {
   drawGoldBurst(W / 2, cy + 120, t, 0.72, p);
 }
 
-// 5. CHARACTER STORY
+// 5. CHARACTER STORY — Karakter Kartun 2D Chibi Penuh (Cowok Hoodie Biru / Cewek Sweater Oranye)
+function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
+  ctx.save();
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#141923';
+
+  const legSwing = stride * 18;
+
+  // --- Kaki & Sepatu Sneakers Merah ---
+  // Kaki Kiri
+  ctx.save();
+  ctx.translate(-28, 132);
+  ctx.rotate(legSwing * 0.015);
+  roundRect(-20, 0, 40, 118, 14);
+  ctx.fillStyle = '#333C4A';
+  ctx.fill(); ctx.stroke();
+  // Sepatu merah kiri
+  roundRect(-30, 108, 56, 30, 14);
+  ctx.fillStyle = '#E0433E';
+  ctx.fill(); ctx.stroke();
+  roundRect(-30, 128, 56, 12, 6);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // Kaki Kanan
+  ctx.save();
+  ctx.translate(28, 132);
+  ctx.rotate(-legSwing * 0.015);
+  roundRect(-20, 0, 40, 118, 14);
+  ctx.fillStyle = '#333C4A';
+  ctx.fill(); ctx.stroke();
+  // Sepatu merah kanan
+  roundRect(-26, 108, 56, 30, 14);
+  ctx.fillStyle = '#E0433E';
+  ctx.fill(); ctx.stroke();
+  roundRect(-26, 128, 56, 12, 6);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // --- Lengan Kiri (Tangan masuk saku hoodie) ---
+  ctx.save();
+  ctx.translate(-64, 14);
+  ctx.rotate(0.18 + stride * 0.06);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(-36, 48, -10, 92);
+  ctx.lineWidth = 30;
+  ctx.strokeStyle = '#141923';
+  ctx.stroke();
+  ctx.lineWidth = 20;
+  ctx.strokeStyle = '#6FB4F5';
+  ctx.stroke();
+  ctx.restore();
+
+  // --- Lengan Kanan (Melambai ramah) ---
+  ctx.save();
+  ctx.translate(64, 16);
+  const waveAngle = -0.68 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.22 + waveBoost);
+  ctx.rotate(waveAngle);
+  // Lengan jaket biru
+  roundRect(-14, -84, 28, 88, 14);
+  ctx.fillStyle = '#6FB4F5';
+  ctx.fill(); ctx.stroke();
+  // Manset biru
+  roundRect(-15, -88, 30, 14, 6);
+  ctx.fillStyle = '#539BE0';
+  ctx.fill(); ctx.stroke();
+  // Telapak & 5 jari melambai
+  ctx.translate(0, -102);
+  ctx.fillStyle = '#F7C9A9';
+  for (let f = -2; f <= 2; f++) {
+    ctx.save();
+    ctx.rotate(f * 0.24);
+    roundRect(-4, -22, 8, 22, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 2, 16, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // --- Badan: Kaos Putih Dalam + Hoodie Biru Terbuka ---
+  roundRect(-62, -6, 124, 146, 26);
+  ctx.fillStyle = '#6FB4F5';
+  ctx.fill(); ctx.stroke();
+
+  // Kaos putih tengah
+  roundRect(-24, -4, 48, 142, 8);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill(); ctx.stroke();
+
+  // Kerah & tali hoodie
+  ctx.beginPath();
+  ctx.moveTo(-26, -4); ctx.lineTo(-14, 18); ctx.lineTo(0, 4);
+  ctx.moveTo(26, -4); ctx.lineTo(14, 18); ctx.lineTo(0, 4);
+  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-16, 16); ctx.lineTo(-16, 52); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(16, 16); ctx.lineTo(16, 52); ctx.stroke();
+
+  // Garis saku depan hoodie
+  ctx.beginPath();
+  ctx.moveTo(-58, 86); ctx.lineTo(-26, 86); ctx.lineTo(-26, 134);
+  ctx.moveTo(58, 86); ctx.lineTo(26, 86); ctx.lineTo(26, 134);
+  ctx.stroke();
+
+  // --- Leher & Kepala ---
+  ctx.save();
+  ctx.rotate(speaking ? Math.sin(t * 6) * 0.025 : Math.sin(t * 2) * 0.015);
+  roundRect(-16, -24, 32, 24, 8);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.fill(); ctx.stroke();
+
+  // Telinga kiri & kanan
+  ctx.beginPath(); ctx.arc(-78, -94, 16, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(78, -94, 16, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+
+  // Wajah bulat chibi
+  ctx.beginPath();
+  ctx.ellipse(0, -102, 76, 72, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.fill(); ctx.stroke();
+
+  // Rambut cokelat tua berjambul (gaya referensi)
+  ctx.beginPath();
+  ctx.moveTo(-74, -104);
+  ctx.quadraticCurveTo(-86, -158, -42, -172);
+  ctx.lineTo(-30, -184);
+  ctx.quadraticCurveTo(8, -192, 48, -172);
+  ctx.lineTo(74, -162);
+  ctx.quadraticCurveTo(84, -134, 74, -104);
+  ctx.quadraticCurveTo(64, -132, 44, -134);
+  ctx.lineTo(28, -122);
+  ctx.lineTo(12, -136);
+  ctx.lineTo(-14, -122);
+  ctx.lineTo(-34, -136);
+  ctx.quadraticCurveTo(-58, -132, -74, -104);
+  ctx.closePath();
+  ctx.fillStyle = '#4A2E22';
+  ctx.fill(); ctx.stroke();
+
+  // Alis ekspresif
+  const browLift = speaking ? -3 : 0;
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(-30, -118 + browLift, 14, Math.PI + 0.3, -0.3); ctx.stroke();
+  ctx.beginPath(); ctx.arc(30, -118 + browLift, 14, Math.PI + 0.3, -0.3); ctx.stroke();
+
+  // Mata besar dengan kilau putih
+  if (blinking) {
+    ctx.beginPath(); ctx.moveTo(-42, -98); ctx.lineTo(-18, -98); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(18, -98); ctx.lineTo(42, -98); ctx.stroke();
+  } else {
+    [-30, 30].forEach(ex => {
+      ctx.beginPath(); ctx.ellipse(ex, -98, 12, 14, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#141923'; ctx.fill();
+      ctx.beginPath(); ctx.arc(ex - 4, -103, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF'; ctx.fill();
+    });
+  }
+
+  // Rona pipi merah muda lembut
+  ctx.fillStyle = 'rgba(244, 114, 114, 0.42)';
+  ctx.beginPath(); ctx.ellipse(-46, -78, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(46, -78, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Hidung kecil
+  ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(0, -84, 5, -0.5, 1.8); ctx.stroke();
+
+  // Mulut (lip-sync saat narasi bicara)
+  ctx.lineWidth = 4.5;
+  if (speaking) {
+    const openH = 6 + Math.abs(Math.sin(t * 18)) * 11;
+    ctx.fillStyle = '#B8324F';
+    ctx.beginPath();
+    ctx.ellipse(0, -64, 15, openH, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, -68, 16, 0.25, Math.PI - 0.25);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawGirlCharacter(t, stride, speaking, blinking) {
+  ctx.save();
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#141923';
+
+  const legSwing = stride * 16;
+
+  // --- Kaki, Kaos Kaki Putih & Sepatu Kuning ---
+  [-24, 24].forEach((lx, idx) => {
+    ctx.save();
+    ctx.translate(lx, 126);
+    ctx.rotate((idx === 0 ? legSwing : -legSwing) * 0.014);
+    // Betis kulit
+    roundRect(-14, 56, 28, 56, 10);
+    ctx.fillStyle = '#F7C9A9';
+    ctx.fill(); ctx.stroke();
+    // Kaos kaki putih
+    roundRect(-15, 86, 30, 26, 6);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill(); ctx.stroke();
+    // Celana jeans selutut
+    roundRect(-19, 0, 38, 66, 10);
+    ctx.fillStyle = '#3B5875';
+    ctx.fill(); ctx.stroke();
+    // Sepatu kuning
+    roundRect(idx === 0 ? -24 : -20, 108, 46, 28, 13);
+    ctx.fillStyle = '#F4B942';
+    ctx.fill(); ctx.stroke();
+    roundRect(idx === 0 ? -24 : -20, 126, 46, 11, 6);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  });
+
+  // --- Lengan Kiri & Kanan (Sweter Oranye) ---
+  [-56, 56].forEach((ax, idx) => {
+    ctx.save();
+    ctx.translate(ax, 12);
+    const baseRot = idx === 0 ? 0.34 : -0.34;
+    const animRot = Math.sin(t * 4.5 + idx * 2) * 0.12;
+    ctx.rotate(baseRot + animRot);
+    roundRect(-13, 0, 26, 86, 13);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    // Telapak tangan
+    ctx.beginPath(); ctx.arc(0, 96, 14, 0, Math.PI * 2);
+    ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+    ctx.restore();
+  });
+
+  // --- Badan: Sweter Oranye ---
+  roundRect(-54, -4, 108, 136, 26);
+  ctx.fillStyle = '#EE723F';
+  ctx.fill(); ctx.stroke();
+
+  // --- Kuncir Kuda Belakang + Ikat Rambut Kuning ---
+  ctx.save();
+  ctx.rotate(speaking ? Math.sin(t * 6) * 0.03 : Math.sin(t * 2.2) * 0.02);
+  ctx.save();
+  ctx.translate(64, -124);
+  ctx.rotate(Math.sin(t * 4) * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(0, -14);
+  ctx.quadraticCurveTo(68, -22, 64, 54);
+  ctx.quadraticCurveTo(56, 94, 24, 96);
+  ctx.quadraticCurveTo(34, 48, 0, 16);
+  ctx.closePath();
+  ctx.fillStyle = '#232730';
+  ctx.fill(); ctx.stroke();
+  // Ikat rambut kuning
+  roundRect(-12, -16, 22, 32, 10);
+  ctx.fillStyle = '#FACC15';
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // Leher & Telinga
+  roundRect(-14, -22, 28, 22, 8);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-72, -92, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(72, -92, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Wajah bulat chibi
+  ctx.beginPath();
+  ctx.ellipse(0, -100, 72, 68, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.fill(); ctx.stroke();
+
+  // Rambut Hitam Poni Rata
+  ctx.beginPath();
+  ctx.arc(0, -106, 75, Math.PI, 0);
+  ctx.lineTo(74, -92);
+  ctx.lineTo(52, -116);
+  ctx.lineTo(30, -114);
+  ctx.lineTo(14, -126);
+  ctx.lineTo(0, -114);
+  ctx.lineTo(-24, -114);
+  ctx.lineTo(-50, -116);
+  ctx.lineTo(-74, -92);
+  ctx.closePath();
+  ctx.fillStyle = '#232730';
+  ctx.fill(); ctx.stroke();
+
+  // Alis & Mata Bulat
+  ctx.lineWidth = 4.5;
+  ctx.beginPath(); ctx.arc(-28, -114, 13, Math.PI + 0.3, -0.3); ctx.stroke();
+  ctx.beginPath(); ctx.arc(28, -114, 13, Math.PI + 0.3, -0.3); ctx.stroke();
+
+  if (blinking) {
+    ctx.beginPath(); ctx.moveTo(-40, -96); ctx.lineTo(-16, -96); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(16, -96); ctx.lineTo(40, -96); ctx.stroke();
+  } else {
+    [-28, 28].forEach(ex => {
+      ctx.beginPath(); ctx.ellipse(ex, -96, 11, 13, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#141923'; ctx.fill();
+      ctx.beginPath(); ctx.arc(ex - 3.5, -101, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF'; ctx.fill();
+    });
+  }
+
+  // Pipi merona
+  ctx.fillStyle = 'rgba(244, 114, 114, 0.45)';
+  ctx.beginPath(); ctx.ellipse(-44, -76, 12, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(44, -76, 12, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Mulut tersenyum / bicara
+  ctx.lineWidth = 4.5;
+  if (speaking) {
+    const openH = 6 + Math.abs(Math.sin(t * 18)) * 10;
+    ctx.fillStyle = '#B8324F';
+    ctx.beginPath();
+    ctx.ellipse(0, -62, 15, openH, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#B8324F';
+    ctx.beginPath();
+    ctx.arc(0, -68, 16, 0.1, Math.PI - 0.1);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
 function renderCharacterStory(data, p, t) {
-  const walkX = W / 2 + Math.sin(t * 2.1) * 42;
-  const stride = Math.sin(t * 6.5);
-  const bobY = Math.abs(stride) * 14;
+  const walkX = W / 2 + Math.sin(t * 1.9) * 32;
+  const stride = Math.sin(t * 5.2);
+  const bobY = Math.abs(stride) * 10;
   const speaking = isSpeakingAt(t);
   const blinking = (t % 3.4) > 3.24;
 
+  // Kartu angka atau balon ucapan di atas karakter
   const cardPop = easeOutBack(Math.min(p * 2.6, 1));
   const cardFloat = Math.sin(t * 2.6) * 8;
   ctx.save();
-  ctx.translate(W / 2, 430 + cardFloat);
+  ctx.translate(W / 2, 410 + cardFloat);
   ctx.scale(cardPop, cardPop);
 
   if (data.card_value) {
@@ -751,87 +1087,60 @@ function renderCharacterStory(data, p, t) {
   }
   ctx.restore();
 
-  const cy = 1145 - bobY;
-  ctx.save();
-  ctx.translate(walkX, cy);
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#0F172A';
+  // Karakter 2D Penuh (pengganti stikman) berdiri di atas rumput (y = 1460)
+  const charChoice = String(data.character || 'boy').toLowerCase();
+  const baseGroundY = 1460;
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
-  ctx.beginPath();
-  ctx.ellipse(0, 315 + bobY, 85 - bobY * 0.6, 18, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (charChoice === 'both') {
+    // Tampilkan kedua karakter berdampingan
+    ctx.save();
+    ctx.translate(W / 2 - 145, baseGroundY - bobY);
+    ctx.scale(1.12, 1.12);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath(); ctx.ellipse(0, 268 + bobY * 0.8, 88, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(0, -14);
+    drawBoyCharacter(t, stride, speaking, blinking, 0.08);
+    ctx.restore();
 
-  ctx.save();
-  ctx.translate(-46, 52);
-  ctx.rotate(0.28 + stride * 0.25);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-26, 95); ctx.stroke();
-  ctx.beginPath(); ctx.arc(-26, 102, 11, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(46, 52);
-  ctx.rotate(-0.45 + Math.sin(t * 4) * 0.14);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(44, -78); ctx.stroke();
-  ctx.beginPath(); ctx.arc(46, -86, 12, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
-  ctx.restore();
-
-  const legSwing = stride * 24;
-  ctx.beginPath(); ctx.moveTo(-22, 190); ctx.lineTo(-24 - legSwing, 305); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(22, 190); ctx.lineTo(24 + legSwing, 305); ctx.stroke();
-  roundRect(-42 - legSwing, 296, 36, 18, 8); ctx.fillStyle = '#1E293B'; ctx.fill(); ctx.stroke();
-  roundRect(8 + legSwing, 296, 36, 18, 8); ctx.fillStyle = '#1E293B'; ctx.fill(); ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(-44, 30); ctx.lineTo(44, 30);
-  ctx.lineTo(78, 195); ctx.lineTo(-78, 195);
-  ctx.closePath();
-  ctx.fillStyle = '#F97316';
-  ctx.fill(); ctx.stroke();
-
-  ctx.save();
-  ctx.rotate(speaking ? Math.sin(t * 8) * 0.03 : 0);
-  ctx.beginPath(); ctx.arc(0, -108, 32, 0, Math.PI * 2); ctx.fillStyle = '#1E293B'; ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(0, -42, 56, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(0, -52, 56, Math.PI, 0); ctx.fillStyle = '#1E293B'; ctx.fill(); ctx.stroke();
-
-  ctx.fillStyle = '#0F172A';
-  if (blinking) {
-    ctx.beginPath(); ctx.moveTo(-25, -36); ctx.lineTo(-11, -36); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(11, -36); ctx.lineTo(25, -36); ctx.stroke();
+    ctx.save();
+    ctx.translate(W / 2 + 155, baseGroundY - Math.abs(Math.cos(t * 5.2)) * 9);
+    ctx.scale(1.10, 1.10);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath(); ctx.ellipse(0, 268, 84, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(0, -14);
+    drawGirlCharacter(t + 0.5, -stride, false, blinking);
+    ctx.restore();
   } else {
-    ctx.beginPath(); ctx.arc(-18, -36, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(18, -36, 5.5, 0, Math.PI * 2); ctx.fill();
-  }
-
-  if (speaking) {
-    const openH = 4 + Math.abs(Math.sin(t * 19)) * 9;
-    ctx.fillStyle = '#9F1239';
+    ctx.save();
+    ctx.translate(walkX, baseGroundY - bobY);
+    ctx.scale(1.26, 1.26);
+    // Bayangan tanah
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, -14, 11, openH, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 266 + bobY * 0.7, 94 - bobY * 0.5, 19, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(0, -18, 12, 0.2, Math.PI - 0.2);
-    ctx.stroke();
+
+    ctx.translate(0, -14);
+    if (charChoice === 'girl') {
+      drawGirlCharacter(t, stride, speaking, blinking);
+    } else {
+      drawBoyCharacter(t, stride, speaking, blinking, 0.12);
+    }
+    ctx.restore();
   }
-  ctx.restore();
-  ctx.restore();
 
   if (data.banner) {
-    roundRect(110, 810, W - 220, 86, 18);
+    roundRect(110, 770, W - 220, 86, 18);
     ctx.fillStyle = '#FACC15';
     ctx.fill();
     ctx.lineWidth = 5;
     ctx.strokeStyle = '#0F172A';
     ctx.stroke();
-    drawGlossSweep(110, 810, W - 220, 86, 18, t, 3.2);
+    drawGlossSweep(110, 770, W - 220, 86, 18, t, 3.2);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0F172A';
     ctx.font = '900 34px Montserrat, sans-serif';
-    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 866);
+    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 826);
   }
 }
 

@@ -289,6 +289,7 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
                 "theme": "sky",
                 "narration": s,
                 "data": {
+                    "character": "girl" if (i // 2) % 2 == 1 else "boy",
                     "card_value": fig or "",
                     "quote": "" if fig else _smart_truncate(s, 95),
                     "banner": _smart_truncate(title, 34),
