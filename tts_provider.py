@@ -172,7 +172,14 @@ def _eleven(text: str, path: Path, previous_text=None, next_text=None) -> list:
 
 
 # ---------------- Edge TTS (cadangan) ----------------
-async def _edge_async(text, path, voice, rate):
+def _clean_tts_text(text: str) -> str:
+    # Hapus karakter emoji/simbol non-ucapan agar Edge TTS tidak menolak permintaan
+    cleaned = "".join(ch for ch in str(text or "") if ord(ch) < 0x2600 or ch in "—–…“”‘’")
+    cleaned = " ".join(cleaned.split()).strip()
+    return cleaned or "Halo."
+
+
+async def _edge_once(text, path, voice, rate):
     import edge_tts
 
     try:
@@ -187,7 +194,27 @@ async def _edge_async(text, path, voice, rate):
             elif chunk["type"] == "WordBoundary":
                 a = chunk["offset"] / 1e7
                 marks.append((a, a + chunk["duration"] / 1e7))
+    if not Path(path).exists() or Path(path).stat().st_size == 0:
+        raise RuntimeError("No audio was received from Edge TTS.")
     return marks
+
+
+async def _edge_async(text, path, voice, rate):
+    clean_text = _clean_tts_text(text)
+    voices_to_try = [voice]
+    for fallback_v in ("id-ID-ArdiNeural", "id-ID-GadisNeural", "en-US-AndrewNeural"):
+        if fallback_v not in voices_to_try:
+            voices_to_try.append(fallback_v)
+
+    last_err = None
+    for v in voices_to_try:
+        for attempt in range(3):
+            try:
+                return await _edge_once(clean_text, path, v, rate)
+            except Exception as e:
+                last_err = e
+                await asyncio.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Edge TTS gagal setelah beberapa percobaan: {last_err}")
 
 
 # ---------------- antarmuka ----------------
