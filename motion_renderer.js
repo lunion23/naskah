@@ -26,6 +26,24 @@ function wrapLines(text, maxWidth) {
   return lines;
 }
 
+function drawSingleLineBoxText(text, cx, cy, maxWidth, maxFontSize, minFontSize = 18) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return;
+  let size = maxFontSize;
+  ctx.font = `900 ${size}px Montserrat, sans-serif`;
+  const measured = ctx.measureText(clean).width;
+  if (measured > maxWidth && measured > 0) {
+    size = Math.max(minFontSize, Math.floor(size * (maxWidth / measured)));
+  }
+  ctx.font = `900 ${size}px Montserrat, sans-serif`;
+  // Ensure strict fit even with font rounding
+  while (size > minFontSize && ctx.measureText(clean).width > maxWidth) {
+    size -= 1;
+    ctx.font = `900 ${size}px Montserrat, sans-serif`;
+  }
+  ctx.fillText(clean, cx, cy + size * 0.35, maxWidth);
+}
+
 function drawFittedBoxText(text, cx, cy, maxWidth, maxHeight, maxFontSize, minFontSize = 26) {
   const clean = String(text || '').trim();
   if (!clean) return;
@@ -1090,7 +1108,7 @@ function renderCharacterStory(data, p, t) {
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#FFFFFF';
-    drawFittedBoxText(data.card_value, 0, 0, boxW - 76, boxH - 44, 62, 30);
+    drawSingleLineBoxText(data.card_value, 0, 0, boxW - 84, 64, 22);
   } else if (data.quote) {
     roundRect(-415, -138, 830, 276, 28);
     ctx.fillStyle = '#FFFFFF';
@@ -1166,7 +1184,7 @@ function renderCharacterStory(data, p, t) {
     drawGlossSweep(110, 770, W - 220, 86, 18, t, 3.2);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0F172A';
-    drawFittedBoxText(String(data.banner).toUpperCase(), W / 2, 813, W - 270, 62, 34, 20);
+    drawSingleLineBoxText(String(data.banner).toUpperCase(), W / 2, 813, W - 270, 34, 18);
   }
 }
 
