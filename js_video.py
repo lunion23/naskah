@@ -96,7 +96,7 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
     box-shadow:0 10px 30px rgba(0,0,0,0.65);
     text-shadow:0 3px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000;
   }
-  #sub-box .word{display:inline-block;margin:0 6px;transition:transform 0.08s ease-out}
+  #sub-box .word{display:inline-block;margin:0 10px;transition:transform 0.08s ease-out}
   #sub-box .active{color:#FFD600;transform:scale(1.08)}
 </style></head>
 <body>
@@ -151,7 +151,7 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
       const isAct = (chunkStart + idx) === activeIdx;
       const txt = escHtml(w.text);
       return '<span class="word' + (isAct ? ' active' : '') + '">' + txt + '</span>';
-    }).join('');
+    }).join(' ');
   };
 </script>
 <script>

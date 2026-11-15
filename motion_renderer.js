@@ -212,19 +212,19 @@ function drawBackground(theme, t) {
     // Bukit latar cerah
     ctx.fillStyle = '#86EFAC';
     ctx.beginPath();
-    ctx.moveTo(0, 1460);
-    ctx.quadraticCurveTo(280, 1350, 580, 1460);
-    ctx.quadraticCurveTo(860, 1365, W, 1460);
+    ctx.moveTo(0, 1390);
+    ctx.quadraticCurveTo(280, 1350, 580, 1390);
+    ctx.quadraticCurveTo(860, 1365, W, 1390);
     ctx.lineTo(W, 1500);
     ctx.lineTo(0, 1500);
     ctx.fill();
 
     // Tanah rumput segar
     ctx.fillStyle = '#4ADE80';
-    ctx.fillRect(0, 1460, W, H - 1460);
+    ctx.fillRect(0, 1390, W, H - 1390);
     ctx.strokeStyle = '#0F172A';
     ctx.lineWidth = 5;
-    ctx.beginPath(); ctx.moveTo(0, 1460); ctx.lineTo(W, 1460); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 1390); ctx.lineTo(W, 1390); ctx.stroke();
     return;
   }
 
@@ -445,10 +445,11 @@ function renderStatementCard(data, p, t, pal) {
 
 // 2. THREE CARDS
 function renderThreeCards(data, p, t, pal) {
+  const hasPresThree = Boolean(data.presenter);
   ctx.textAlign = 'center';
   ctx.fillStyle = pal.isDark ? '#FFD600' : pal.ink;
-  ctx.font = '900 52px Montserrat, sans-serif';
-  drawWrappedText(data.title || 'SUMBER PENDAPATAN', W / 2, 230, 940, 62);
+  ctx.font = hasPresThree ? '900 44px Montserrat, sans-serif' : '900 52px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'SUMBER PENDAPATAN', hasPresThree ? W / 2 + 75 : W / 2, 210, hasPresThree ? 740 : 940, 56);
 
   const cards = (data.cards || ['POIN 1', 'POIN 2', 'POIN 3']).slice(0, 3);
   const icons = ['🧾', '🚢', '📦'];
@@ -697,103 +698,109 @@ function renderCalculator(data, p, t, pal) {
   drawGoldBurst(W / 2, cy + 120, t, 0.72, p);
 }
 
-// 5. CHARACTER STORY — Karakter Kartun 2D Chibi Penuh (Cowok Hoodie Biru / Cewek Sweater Oranye)
-function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
+// 5. CHARACTER STORY — Karakter Kartun 2D Ekspresif dengan 4 Gestur Tangan Beragam
+function drawHandPalm(x, y, rot, scale = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.strokeStyle = '#141923';
+  ctx.lineWidth = 4.5;
+  for (let f = -2; f <= 2; f++) {
+    ctx.save();
+    ctx.rotate(f * 0.22);
+    roundRect(-3.8, -20, 7.6, 20, 3.8);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 2, 15, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPointingHand(x, y, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.strokeStyle = '#141923';
+  ctx.lineWidth = 4.5;
+  // Jari telunjuk menunjuk ke atas
+  roundRect(-5, -28, 10, 26, 5);
+  ctx.fill(); ctx.stroke();
+  // Kepalan jari lain
+  roundRect(-14, -6, 28, 22, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawThumbsUpHand(x, y, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = '#F7C9A9';
+  ctx.strokeStyle = '#141923';
+  ctx.lineWidth = 4.5;
+  // Ibu jari ke atas
+  roundRect(-5, -26, 11, 22, 5.5);
+  ctx.fill(); ctx.stroke();
+  // Kepalan
+  roundRect(-14, -6, 28, 24, 10);
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBoyCharacter(t, stride, speaking, blinking, waveBoost = 0.1) {
   ctx.save();
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#141923';
 
-  const legSwing = stride * 18;
+  const legSwing = stride * 14;
+  // Siklus 4 gestur tangan setiap 2.2 detik saat bicara agar tidak monoton
+  const gestureMode = speaking ? Math.floor(t / 2.2) % 4 : 0;
 
   // --- Kaki & Sepatu Sneakers Merah ---
-  // Kaki Kiri
   ctx.save();
   ctx.translate(-28, 132);
-  ctx.rotate(legSwing * 0.015);
-  roundRect(-20, 0, 40, 118, 14);
+  ctx.rotate(legSwing * 0.012);
+  roundRect(-20, 0, 40, 114, 14);
   ctx.fillStyle = '#333C4A';
   ctx.fill(); ctx.stroke();
-  // Sepatu merah kiri
-  roundRect(-30, 108, 56, 30, 14);
+  roundRect(-30, 104, 56, 30, 14);
   ctx.fillStyle = '#E0433E';
   ctx.fill(); ctx.stroke();
-  roundRect(-30, 128, 56, 12, 6);
+  roundRect(-30, 124, 56, 12, 6);
   ctx.fillStyle = '#FFFFFF';
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // Kaki Kanan
   ctx.save();
   ctx.translate(28, 132);
-  ctx.rotate(-legSwing * 0.015);
-  roundRect(-20, 0, 40, 118, 14);
+  ctx.rotate(-legSwing * 0.012);
+  roundRect(-20, 0, 40, 114, 14);
   ctx.fillStyle = '#333C4A';
   ctx.fill(); ctx.stroke();
-  // Sepatu merah kanan
-  roundRect(-26, 108, 56, 30, 14);
+  roundRect(-26, 104, 56, 30, 14);
   ctx.fillStyle = '#E0433E';
   ctx.fill(); ctx.stroke();
-  roundRect(-26, 128, 56, 12, 6);
+  roundRect(-26, 124, 56, 12, 6);
   ctx.fillStyle = '#FFFFFF';
-  ctx.fill(); ctx.stroke();
-  ctx.restore();
-
-  // --- Lengan Kiri (Tangan masuk saku hoodie) ---
-  ctx.save();
-  ctx.translate(-64, 14);
-  ctx.rotate(0.18 + stride * 0.06);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(-36, 48, -10, 92);
-  ctx.lineWidth = 30;
-  ctx.strokeStyle = '#141923';
-  ctx.stroke();
-  ctx.lineWidth = 20;
-  ctx.strokeStyle = '#6FB4F5';
-  ctx.stroke();
-  ctx.restore();
-
-  // --- Lengan Kanan (Melambai ramah) ---
-  ctx.save();
-  ctx.translate(64, 16);
-  const waveAngle = -0.68 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.22 + waveBoost);
-  ctx.rotate(waveAngle);
-  // Lengan jaket biru
-  roundRect(-14, -84, 28, 88, 14);
-  ctx.fillStyle = '#6FB4F5';
-  ctx.fill(); ctx.stroke();
-  // Manset biru
-  roundRect(-15, -88, 30, 14, 6);
-  ctx.fillStyle = '#539BE0';
-  ctx.fill(); ctx.stroke();
-  // Telapak & 5 jari melambai
-  ctx.translate(0, -102);
-  ctx.fillStyle = '#F7C9A9';
-  for (let f = -2; f <= 2; f++) {
-    ctx.save();
-    ctx.rotate(f * 0.24);
-    roundRect(-4, -22, 8, 22, 4);
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-  ctx.beginPath();
-  ctx.arc(0, 2, 16, 0, Math.PI * 2);
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
   // --- Badan: Kaos Putih Dalam + Hoodie Biru Terbuka ---
-  roundRect(-62, -6, 124, 146, 26);
+  roundRect(-62, -6, 124, 144, 26);
   ctx.fillStyle = '#6FB4F5';
   ctx.fill(); ctx.stroke();
 
-  // Kaos putih tengah
-  roundRect(-24, -4, 48, 142, 8);
+  roundRect(-24, -4, 48, 140, 8);
   ctx.fillStyle = '#FFFFFF';
   ctx.fill(); ctx.stroke();
 
-  // Kerah & tali hoodie
   ctx.beginPath();
   ctx.moveTo(-26, -4); ctx.lineTo(-14, 18); ctx.lineTo(0, 4);
   ctx.moveTo(26, -4); ctx.lineTo(14, 18); ctx.lineTo(0, 4);
@@ -801,30 +808,92 @@ function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
   ctx.beginPath(); ctx.moveTo(-16, 16); ctx.lineTo(-16, 52); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(16, 16); ctx.lineTo(16, 52); ctx.stroke();
 
-  // Garis saku depan hoodie
   ctx.beginPath();
-  ctx.moveTo(-58, 86); ctx.lineTo(-26, 86); ctx.lineTo(-26, 134);
-  ctx.moveTo(58, 86); ctx.lineTo(26, 86); ctx.lineTo(26, 134);
+  ctx.moveTo(-58, 86); ctx.lineTo(-26, 86); ctx.lineTo(-26, 132);
+  ctx.moveTo(58, 86); ctx.lineTo(26, 86); ctx.lineTo(26, 132);
   ctx.stroke();
+
+  // --- LENGAN KIRI (Di depan badan agar tidak terpotong) ---
+  ctx.save();
+  ctx.translate(-62, 16);
+  if (gestureMode === 2) {
+    // Gestur 2: Kedua tangan terbuka menjelaskan
+    const openAngle = 0.72 + Math.sin(t * 7) * 0.16;
+    ctx.rotate(openAngle);
+    roundRect(-13, 0, 26, 78, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    drawHandPalm(0, 88, 0.3, 0.95);
+  } else {
+    // Lengan santai bergerak alami
+    ctx.rotate(0.24 + Math.sin(t * 3.8) * 0.08);
+    roundRect(-13, 0, 26, 82, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 90, 14, 0, Math.PI * 2);
+    ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+
+  // --- LENGAN KANAN (Digambar di depan badan + 4 variasi gestur) ---
+  ctx.save();
+  ctx.translate(62, 16);
+  if (gestureMode === 1) {
+    // Gestur 1: Menunjuk ke atas ("Aha! Perhatikan ini")
+    const pointAngle = -2.45 + Math.sin(t * 8) * 0.12;
+    ctx.rotate(pointAngle);
+    roundRect(-13, 0, 26, 80, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    roundRect(-14, 70, 28, 14, 6);
+    ctx.fillStyle = '#539BE0';
+    ctx.fill(); ctx.stroke();
+    drawPointingHand(0, 96, Math.PI);
+  } else if (gestureMode === 2) {
+    // Gestur 2: Tangan terbuka menjelaskan ke samping
+    const presentAngle = -0.78 - Math.sin(t * 7) * 0.18;
+    ctx.rotate(presentAngle);
+    roundRect(-13, 0, 26, 80, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    drawHandPalm(0, 92, Math.PI - 0.3, 0.95);
+  } else if (gestureMode === 3) {
+    // Gestur 3: Jempol mantap (Thumbs Up)
+    const thumbAngle = -1.25 + Math.sin(t * 6) * 0.14;
+    ctx.rotate(thumbAngle);
+    roundRect(-13, 0, 26, 78, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    drawThumbsUpHand(0, 92, Math.PI + 0.4);
+  } else {
+    // Gestur 0: Melambai ramah
+    const waveAngle = -2.25 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.24 + waveBoost);
+    ctx.rotate(waveAngle);
+    roundRect(-13, 0, 26, 82, 13);
+    ctx.fillStyle = '#6FB4F5';
+    ctx.fill(); ctx.stroke();
+    roundRect(-14, 72, 28, 14, 6);
+    ctx.fillStyle = '#539BE0';
+    ctx.fill(); ctx.stroke();
+    drawHandPalm(0, 96, Math.PI, 1);
+  }
+  ctx.restore();
 
   // --- Leher & Kepala ---
   ctx.save();
-  ctx.rotate(speaking ? Math.sin(t * 6) * 0.025 : Math.sin(t * 2) * 0.015);
+  ctx.rotate(speaking ? Math.sin(t * 5.5) * 0.03 : Math.sin(t * 2) * 0.015);
   roundRect(-16, -24, 32, 24, 8);
   ctx.fillStyle = '#F7C9A9';
   ctx.fill(); ctx.stroke();
 
-  // Telinga kiri & kanan
   ctx.beginPath(); ctx.arc(-78, -94, 16, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(78, -94, 16, 0, Math.PI * 2); ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
 
-  // Wajah bulat chibi
   ctx.beginPath();
   ctx.ellipse(0, -102, 76, 72, 0, 0, Math.PI * 2);
   ctx.fillStyle = '#F7C9A9';
   ctx.fill(); ctx.stroke();
 
-  // Rambut cokelat tua berjambul (gaya referensi)
   ctx.beginPath();
   ctx.moveTo(-74, -104);
   ctx.quadraticCurveTo(-86, -158, -42, -172);
@@ -842,13 +911,11 @@ function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
   ctx.fillStyle = '#4A2E22';
   ctx.fill(); ctx.stroke();
 
-  // Alis ekspresif
   const browLift = speaking ? -3 : 0;
   ctx.lineWidth = 5;
   ctx.beginPath(); ctx.arc(-30, -118 + browLift, 14, Math.PI + 0.3, -0.3); ctx.stroke();
   ctx.beginPath(); ctx.arc(30, -118 + browLift, 14, Math.PI + 0.3, -0.3); ctx.stroke();
 
-  // Mata besar dengan kilau putih
   if (blinking) {
     ctx.beginPath(); ctx.moveTo(-42, -98); ctx.lineTo(-18, -98); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(18, -98); ctx.lineTo(42, -98); ctx.stroke();
@@ -861,16 +928,13 @@ function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
     });
   }
 
-  // Rona pipi merah muda lembut
   ctx.fillStyle = 'rgba(244, 114, 114, 0.42)';
   ctx.beginPath(); ctx.ellipse(-46, -78, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(46, -78, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Hidung kecil
   ctx.lineWidth = 3.5;
   ctx.beginPath(); ctx.arc(0, -84, 5, -0.5, 1.8); ctx.stroke();
 
-  // Mulut (lip-sync saat narasi bicara)
   ctx.lineWidth = 4.5;
   if (speaking) {
     const openH = 6 + Math.abs(Math.sin(t * 18)) * 11;
@@ -894,59 +958,95 @@ function drawGirlCharacter(t, stride, speaking, blinking) {
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#141923';
 
-  const legSwing = stride * 16;
+  const legSwing = stride * 13;
+  // Siklus 4 gestur tangan cewek agar dinamis & tidak kaku
+  const gestureMode = Math.floor((t + 1.1) / 2.2) % 4;
 
   // --- Kaki, Kaos Kaki Putih & Sepatu Kuning ---
   [-24, 24].forEach((lx, idx) => {
     ctx.save();
     ctx.translate(lx, 126);
-    ctx.rotate((idx === 0 ? legSwing : -legSwing) * 0.014);
-    // Betis kulit
-    roundRect(-14, 56, 28, 56, 10);
+    ctx.rotate((idx === 0 ? legSwing : -legSwing) * 0.012);
+    roundRect(-14, 56, 28, 52, 10);
     ctx.fillStyle = '#F7C9A9';
     ctx.fill(); ctx.stroke();
-    // Kaos kaki putih
-    roundRect(-15, 86, 30, 26, 6);
+    roundRect(-15, 84, 30, 24, 6);
     ctx.fillStyle = '#FFFFFF';
     ctx.fill(); ctx.stroke();
-    // Celana jeans selutut
     roundRect(-19, 0, 38, 66, 10);
     ctx.fillStyle = '#3B5875';
     ctx.fill(); ctx.stroke();
-    // Sepatu kuning
-    roundRect(idx === 0 ? -24 : -20, 108, 46, 28, 13);
+    roundRect(idx === 0 ? -24 : -20, 104, 46, 28, 13);
     ctx.fillStyle = '#F4B942';
     ctx.fill(); ctx.stroke();
-    roundRect(idx === 0 ? -24 : -20, 126, 46, 11, 6);
+    roundRect(idx === 0 ? -24 : -20, 122, 46, 11, 6);
     ctx.fillStyle = '#FFFFFF';
     ctx.fill(); ctx.stroke();
-    ctx.restore();
-  });
-
-  // --- Lengan Kiri & Kanan (Sweter Oranye) ---
-  [-56, 56].forEach((ax, idx) => {
-    ctx.save();
-    ctx.translate(ax, 12);
-    const baseRot = idx === 0 ? 0.34 : -0.34;
-    const animRot = Math.sin(t * 4.5 + idx * 2) * 0.12;
-    ctx.rotate(baseRot + animRot);
-    roundRect(-13, 0, 26, 86, 13);
-    ctx.fillStyle = '#EE723F';
-    ctx.fill(); ctx.stroke();
-    // Telapak tangan
-    ctx.beginPath(); ctx.arc(0, 96, 14, 0, Math.PI * 2);
-    ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
     ctx.restore();
   });
 
   // --- Badan: Sweter Oranye ---
-  roundRect(-54, -4, 108, 136, 26);
+  roundRect(-54, -4, 108, 134, 26);
   ctx.fillStyle = '#EE723F';
   ctx.fill(); ctx.stroke();
 
+  // --- LENGAN KIRI CEWEK (Di depan sweter + variasi gestur) ---
+  ctx.save();
+  ctx.translate(-54, 14);
+  if (gestureMode === 0 || gestureMode === 2) {
+    // Melambai / menunjuk ke arah kartu di atas
+    const armRot = 2.15 + Math.sin(t * 7.2) * 0.22;
+    ctx.rotate(armRot);
+    roundRect(-12, 0, 24, 78, 12);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    if (gestureMode === 2) {
+      drawPointingHand(0, 92, Math.PI);
+    } else {
+      drawHandPalm(0, 90, Math.PI, 0.92);
+    }
+  } else {
+    ctx.rotate(0.32 + Math.sin(t * 4.2) * 0.1);
+    roundRect(-12, 0, 24, 80, 12);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 88, 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+
+  // --- LENGAN KANAN CEWEK (Di depan sweter + variasi gestur) ---
+  ctx.save();
+  ctx.translate(54, 14);
+  if (gestureMode === 1) {
+    // Tangan kanan mengangkat jempol / menjelaskan
+    const armRot = -1.35 - Math.sin(t * 6.5) * 0.16;
+    ctx.rotate(armRot);
+    roundRect(-12, 0, 24, 76, 12);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    drawThumbsUpHand(0, 88, Math.PI + 0.3);
+  } else if (gestureMode === 2) {
+    // Kedua tangan terbuka ekspresif
+    const armRot = -0.82 - Math.sin(t * 7) * 0.16;
+    ctx.rotate(armRot);
+    roundRect(-12, 0, 24, 76, 12);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    drawHandPalm(0, 88, Math.PI - 0.3, 0.92);
+  } else {
+    ctx.rotate(-0.32 - Math.sin(t * 4.2 + 1.5) * 0.1);
+    roundRect(-12, 0, 24, 80, 12);
+    ctx.fillStyle = '#EE723F';
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 88, 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#F7C9A9'; ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+
   // --- Kuncir Kuda Belakang + Ikat Rambut Kuning ---
   ctx.save();
-  ctx.rotate(speaking ? Math.sin(t * 6) * 0.03 : Math.sin(t * 2.2) * 0.02);
+  ctx.rotate(speaking ? Math.sin(t * 5.8) * 0.03 : Math.sin(t * 2.2) * 0.02);
   ctx.save();
   ctx.translate(64, -124);
   ctx.rotate(Math.sin(t * 4) * 0.08);
@@ -958,26 +1058,22 @@ function drawGirlCharacter(t, stride, speaking, blinking) {
   ctx.closePath();
   ctx.fillStyle = '#232730';
   ctx.fill(); ctx.stroke();
-  // Ikat rambut kuning
   roundRect(-12, -16, 22, 32, 10);
   ctx.fillStyle = '#FACC15';
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // Leher & Telinga
   roundRect(-14, -22, 28, 22, 8);
   ctx.fillStyle = '#F7C9A9';
   ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(-72, -92, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(72, -92, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-  // Wajah bulat chibi
   ctx.beginPath();
   ctx.ellipse(0, -100, 72, 68, 0, 0, Math.PI * 2);
   ctx.fillStyle = '#F7C9A9';
   ctx.fill(); ctx.stroke();
 
-  // Rambut Hitam Poni Rata
   ctx.beginPath();
   ctx.arc(0, -106, 75, Math.PI, 0);
   ctx.lineTo(74, -92);
@@ -992,7 +1088,6 @@ function drawGirlCharacter(t, stride, speaking, blinking) {
   ctx.fillStyle = '#232730';
   ctx.fill(); ctx.stroke();
 
-  // Alis & Mata Bulat
   ctx.lineWidth = 4.5;
   ctx.beginPath(); ctx.arc(-28, -114, 13, Math.PI + 0.3, -0.3); ctx.stroke();
   ctx.beginPath(); ctx.arc(28, -114, 13, Math.PI + 0.3, -0.3); ctx.stroke();
@@ -1009,12 +1104,10 @@ function drawGirlCharacter(t, stride, speaking, blinking) {
     });
   }
 
-  // Pipi merona
   ctx.fillStyle = 'rgba(244, 114, 114, 0.45)';
   ctx.beginPath(); ctx.ellipse(-44, -76, 12, 7.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(44, -76, 12, 7.5, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Mulut tersenyum / bicara
   ctx.lineWidth = 4.5;
   if (speaking) {
     const openH = 6 + Math.abs(Math.sin(t * 18)) * 10;
@@ -1034,9 +1127,9 @@ function drawGirlCharacter(t, stride, speaking, blinking) {
 }
 
 function renderCharacterStory(data, p, t) {
-  const walkX = W / 2 + Math.sin(t * 1.9) * 32;
+  const walkX = W / 2 + Math.sin(t * 1.9) * 28;
   const stride = Math.sin(t * 5.2);
-  const bobY = Math.abs(stride) * 10;
+  const bobY = Math.abs(stride) * 8;
   const speaking = isSpeakingAt(t);
   const blinking = (t % 3.4) > 3.24;
 
@@ -1044,7 +1137,7 @@ function renderCharacterStory(data, p, t) {
   const cardPop = easeOutBack(Math.min(p * 2.6, 1));
   const cardFloat = Math.sin(t * 2.6) * 8;
   ctx.save();
-  ctx.translate(W / 2, 410 + cardFloat);
+  ctx.translate(W / 2, 385 + cardFloat);
   ctx.scale(cardPop, cardPop);
 
   if (data.card_value) {
@@ -1087,37 +1180,39 @@ function renderCharacterStory(data, p, t) {
   }
   ctx.restore();
 
-  // Karakter 2D Penuh (pengganti stikman) berdiri di atas rumput (y = 1460)
+  // Karakter 2D Penuh berdiri di atas tanah (y = 1390 agar sepatu tidak tertutup subtitle)
   const charChoice = String(data.character || 'boy').toLowerCase();
-  const baseGroundY = 1460;
+  const baseGroundY = 1390;
 
   if (charChoice === 'both') {
-    // Tampilkan kedua karakter berdampingan
+    // Saat berdua, gantian berbicara secara natural
+    const boyTurn = speaking && (Math.floor(t / 1.8) % 2 === 0);
+    const girlTurn = speaking && !boyTurn;
+
     ctx.save();
-    ctx.translate(W / 2 - 145, baseGroundY - bobY);
-    ctx.scale(1.12, 1.12);
+    ctx.translate(W / 2 - 150, baseGroundY - bobY);
+    ctx.scale(1.08, 1.08);
     ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    ctx.beginPath(); ctx.ellipse(0, 268 + bobY * 0.8, 88, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 260 + bobY * 0.8, 88, 18, 0, 0, Math.PI * 2); ctx.fill();
     ctx.translate(0, -14);
-    drawBoyCharacter(t, stride, speaking, blinking, 0.08);
+    drawBoyCharacter(t, stride, boyTurn, blinking, 0.08);
     ctx.restore();
 
     ctx.save();
-    ctx.translate(W / 2 + 155, baseGroundY - Math.abs(Math.cos(t * 5.2)) * 9);
-    ctx.scale(1.10, 1.10);
+    ctx.translate(W / 2 + 160, baseGroundY - Math.abs(Math.cos(t * 5.2)) * 8);
+    ctx.scale(1.06, 1.06);
     ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    ctx.beginPath(); ctx.ellipse(0, 268, 84, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 260, 84, 18, 0, 0, Math.PI * 2); ctx.fill();
     ctx.translate(0, -14);
-    drawGirlCharacter(t + 0.5, -stride, false, blinking);
+    drawGirlCharacter(t + 0.4, -stride, girlTurn, blinking);
     ctx.restore();
   } else {
     ctx.save();
     ctx.translate(walkX, baseGroundY - bobY);
-    ctx.scale(1.26, 1.26);
-    // Bayangan tanah
+    ctx.scale(1.22, 1.22);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, 266 + bobY * 0.7, 94 - bobY * 0.5, 19, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 258 + bobY * 0.7, 94 - bobY * 0.5, 19, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.translate(0, -14);
@@ -1130,17 +1225,17 @@ function renderCharacterStory(data, p, t) {
   }
 
   if (data.banner) {
-    roundRect(110, 770, W - 220, 86, 18);
+    roundRect(110, 725, W - 220, 86, 18);
     ctx.fillStyle = '#FACC15';
     ctx.fill();
     ctx.lineWidth = 5;
     ctx.strokeStyle = '#0F172A';
     ctx.stroke();
-    drawGlossSweep(110, 770, W - 220, 86, 18, t, 3.2);
+    drawGlossSweep(110, 725, W - 220, 86, 18, t, 3.2);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0F172A';
     ctx.font = '900 34px Montserrat, sans-serif';
-    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 826);
+    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 781);
   }
 }
 
@@ -1408,10 +1503,11 @@ function renderCtaClosing(data, p, t, pal) {
 
 // 10. CODE TERMINAL (Jendela Kode / Log dengan Animasi Mengetik Real-Time)
 function renderCodeTerminal(data, p, t, pal) {
+  const hasPresTerm = Boolean(data.presenter);
   ctx.textAlign = 'center';
   ctx.fillStyle = pal.isDark ? '#FFD600' : pal.ink;
-  ctx.font = '900 48px Montserrat, sans-serif';
-  drawWrappedText(data.title || 'KODE & LOG SISTEM', W / 2, 220, 940, 58);
+  ctx.font = hasPresTerm ? '900 44px Montserrat, sans-serif' : '900 48px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'KODE & LOG SISTEM', hasPresTerm ? W / 2 + 75 : W / 2, 200, hasPresTerm ? 740 : 940, 54);
 
   const enter = easeOutBack(Math.min(p * 2.6, 1));
   const cw = 920, ch = 820, cx = (W - cw) / 2, cy = 350 + (1 - enter) * 80;
@@ -1512,10 +1608,11 @@ function renderCodeTerminal(data, p, t, pal) {
 
 // 11. FLOW DIAGRAM (Diagram Alur Sistem dengan Titik Data Bergerak)
 function renderFlowDiagram(data, p, t, pal) {
+  const hasPresFlow = Boolean(data.presenter);
   ctx.textAlign = 'center';
   ctx.fillStyle = pal.isDark ? '#FFD600' : pal.ink;
-  ctx.font = '900 48px Montserrat, sans-serif';
-  drawWrappedText(data.title || 'ALUR KERJA OTOMATIS', W / 2, 220, 940, 58);
+  ctx.font = hasPresFlow ? '900 44px Montserrat, sans-serif' : '900 48px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'ALUR KERJA OTOMATIS', hasPresFlow ? W / 2 + 75 : W / 2, 200, hasPresFlow ? 740 : 940, 54);
 
   const steps = (data.steps || [
     { icon: '📲', title: 'KIRIM NASKAH', desc: 'Chat atau file .json di Telegram' },
@@ -1604,23 +1701,22 @@ function renderFlowDiagram(data, p, t, pal) {
   });
 }
 
-// Mini Presenter PiP di pojok atas (opsional saat data.presenter = "boy" / "girl")
+// Mini Presenter PiP di pojok kiri atas (aman tanpa menimpa judul)
 function drawMiniPresenter(charType, t) {
   if (!charType) return;
   const speaking = isSpeakingAt(t);
   const blinking = (t % 3.4) > 3.24;
   const stride = Math.sin(t * 4);
-  const px = 148, py = 165;
+  const px = 122, py = 152, rad = 74;
 
   ctx.save();
-  // Lingkaran avatar berbingkai
   ctx.beginPath();
-  ctx.arc(px + 5, py + 6, 86, 0, Math.PI * 2);
+  ctx.arc(px + 4, py + 5, rad, 0, Math.PI * 2);
   ctx.fillStyle = '#0F172A';
   ctx.fill();
 
   ctx.beginPath();
-  ctx.arc(px, py, 86, 0, Math.PI * 2);
+  ctx.arc(px, py, rad, 0, Math.PI * 2);
   ctx.fillStyle = '#E0F2FE';
   ctx.fill();
   ctx.lineWidth = 5;
@@ -1628,11 +1724,11 @@ function drawMiniPresenter(charType, t) {
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(px, py, 83, 0, Math.PI * 2);
+  ctx.arc(px, py, rad - 3, 0, Math.PI * 2);
   ctx.clip();
 
-  ctx.translate(px, py + 82);
-  ctx.scale(0.68, 0.68);
+  ctx.translate(px, py + 72);
+  ctx.scale(0.60, 0.60);
   if (String(charType).toLowerCase() === 'girl') {
     drawGirlCharacter(t, stride * 0.2, speaking, blinking);
   } else {
