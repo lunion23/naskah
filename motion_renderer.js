@@ -26,45 +26,6 @@ function wrapLines(text, maxWidth) {
   return lines;
 }
 
-function drawSingleLineBoxText(text, cx, cy, maxWidth, maxFontSize, minFontSize = 18) {
-  const clean = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!clean) return;
-  let size = maxFontSize;
-  ctx.font = `900 ${size}px Montserrat, sans-serif`;
-  const measured = ctx.measureText(clean).width;
-  if (measured > maxWidth && measured > 0) {
-    size = Math.max(minFontSize, Math.floor(size * (maxWidth / measured)));
-  }
-  ctx.font = `900 ${size}px Montserrat, sans-serif`;
-  // Ensure strict fit even with font rounding
-  while (size > minFontSize && ctx.measureText(clean).width > maxWidth) {
-    size -= 1;
-    ctx.font = `900 ${size}px Montserrat, sans-serif`;
-  }
-  ctx.fillText(clean, cx, cy + size * 0.35, maxWidth);
-}
-
-function drawFittedBoxText(text, cx, cy, maxWidth, maxHeight, maxFontSize, minFontSize = 26) {
-  const clean = String(text || '').trim();
-  if (!clean) return;
-  let size = maxFontSize;
-  let lines = [clean];
-  while (size >= minFontSize) {
-    ctx.font = `900 ${size}px Montserrat, sans-serif`;
-    lines = wrapLines(clean, maxWidth);
-    const lineH = Math.round(size * 1.18);
-    const widest = Math.max(...lines.map(l => ctx.measureText(l).width), 0);
-    if (widest <= maxWidth && lines.length * lineH <= maxHeight) {
-      break;
-    }
-    size -= 3;
-  }
-  ctx.font = `900 ${size}px Montserrat, sans-serif`;
-  const lineH = Math.round(size * 1.18);
-  const startY = cy - ((lines.length - 1) * lineH) / 2 + size * 0.35;
-  lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineH));
-}
-
 function drawWrappedText(text, x, y, maxWidth, lineHeight) {
   const lines = wrapLines(text, maxWidth);
   lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
@@ -794,37 +755,31 @@ function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
   ctx.stroke();
   ctx.restore();
 
-  // --- Lengan Kanan (Siku menekuk keluar ke samping + melambai di samping kepala) ---
+  // --- Lengan Kanan (Melambai ramah) ---
   ctx.save();
-  ctx.translate(60, 14);
-  const waveAngle = 0.78 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.20 + waveBoost);
+  ctx.translate(64, 16);
+  const waveAngle = -0.68 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.22 + waveBoost);
   ctx.rotate(waveAngle);
-  // Lengan atas (keluar menjauh dari badan ke kanan)
-  roundRect(0, -13, 64, 26, 13);
-  ctx.fillStyle = '#6FB4F5';
-  ctx.fill(); ctx.stroke();
-  // Sendi siku di (56, 0) lalu lengan bawah naik ke atas
-  ctx.translate(56, 0);
-  ctx.rotate(-1.25 + Math.sin(t * 6.0) * 0.14);
-  roundRect(-13, -72, 26, 76, 13);
+  // Lengan jaket biru
+  roundRect(-14, -84, 28, 88, 14);
   ctx.fillStyle = '#6FB4F5';
   ctx.fill(); ctx.stroke();
   // Manset biru
-  roundRect(-14, -76, 28, 13, 6);
+  roundRect(-15, -88, 30, 14, 6);
   ctx.fillStyle = '#539BE0';
   ctx.fill(); ctx.stroke();
-  // Telapak & 5 jari melambai bebas di ruang kosong
-  ctx.translate(0, -90);
+  // Telapak & 5 jari melambai
+  ctx.translate(0, -102);
   ctx.fillStyle = '#F7C9A9';
   for (let f = -2; f <= 2; f++) {
     ctx.save();
     ctx.rotate(f * 0.24);
-    roundRect(-4, -21, 8, 21, 4);
+    roundRect(-4, -22, 8, 22, 4);
     ctx.fill(); ctx.stroke();
     ctx.restore();
   }
   ctx.beginPath();
-  ctx.arc(0, 2, 15, 0, Math.PI * 2);
+  ctx.arc(0, 2, 16, 0, Math.PI * 2);
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
@@ -1093,22 +1048,22 @@ function renderCharacterStory(data, p, t) {
   ctx.scale(cardPop, cardPop);
 
   if (data.card_value) {
-    const boxW = 840, boxH = 224;
-    roundRect(-boxW / 2 + 10, -boxH / 2 + 10, boxW, boxH, 26);
+    roundRect(-312, -104, 640, 224, 26);
     ctx.fillStyle = '#0F172A';
     ctx.fill();
 
-    roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 26);
+    roundRect(-320, -112, 640, 224, 26);
     ctx.fillStyle = data.card_color || '#10B981';
     ctx.fill();
     ctx.lineWidth = 6;
     ctx.strokeStyle = '#0F172A';
     ctx.stroke();
-    drawGlossSweep(-boxW / 2, -boxH / 2, boxW, boxH, 26, t, 3.0);
+    drawGlossSweep(-320, -112, 640, 224, 26, t, 3.0);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#FFFFFF';
-    drawSingleLineBoxText(data.card_value, 0, 0, boxW - 84, 64, 22);
+    ctx.font = '900 66px Montserrat, sans-serif';
+    ctx.fillText(data.card_value, 0, 24);
   } else if (data.quote) {
     roundRect(-415, -138, 830, 276, 28);
     ctx.fillStyle = '#FFFFFF';
@@ -1184,7 +1139,8 @@ function renderCharacterStory(data, p, t) {
     drawGlossSweep(110, 770, W - 220, 86, 18, t, 3.2);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0F172A';
-    drawSingleLineBoxText(String(data.banner).toUpperCase(), W / 2, 813, W - 270, 34, 18);
+    ctx.font = '900 34px Montserrat, sans-serif';
+    ctx.fillText(String(data.banner).toUpperCase(), W / 2, 826);
   }
 }
 
@@ -1449,6 +1405,242 @@ function renderCtaClosing(data, p, t, pal) {
   drawGoldBurst(W / 2, 480, t, 0.15, p);
 }
 
+
+// 10. CODE TERMINAL (Jendela Kode / Log dengan Animasi Mengetik Real-Time)
+function renderCodeTerminal(data, p, t, pal) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = pal.isDark ? '#FFD600' : pal.ink;
+  ctx.font = '900 48px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'KODE & LOG SISTEM', W / 2, 220, 940, 58);
+
+  const enter = easeOutBack(Math.min(p * 2.6, 1));
+  const cw = 920, ch = 820, cx = (W - cw) / 2, cy = 350 + (1 - enter) * 80;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(enter * 1.4, 1);
+
+  // Neo-brutalist shadow
+  roundRect(cx + 12, cy + 14, cw, ch, 26);
+  ctx.fillStyle = '#0F172A';
+  ctx.fill();
+
+  // Dark VSCode-style editor window (kontras tajam di atas latar cerah)
+  roundRect(cx, cy, cw, ch, 26);
+  ctx.fillStyle = '#0F172A';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#0F172A';
+  ctx.stroke();
+
+  // Top titlebar
+  roundRect(cx, cy, cw, 68, 26);
+  ctx.fillStyle = '#1E293B';
+  ctx.fill();
+  ctx.fillRect(cx, cy + 40, cw, 28);
+
+  // Window traffic dots
+  ['#EF4444', '#FACC15', '#22C55E'].forEach((col, i) => {
+    ctx.beginPath();
+    ctx.arc(cx + 42 + i * 32, cy + 34, 11, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+  });
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '700 24px Montserrat, sans-serif';
+  ctx.fillText(data.filename || 'bot.py — terminal', cx + 150, cy + 42);
+
+  // Animated typewriter lines
+  const lines = data.lines || [
+    '$ python bot.py',
+    '✓ Menerima naskah JSON dari Telegram...',
+    '✓ Membuat suara TTS (24 kata)...',
+    '✓ Render 1080x1920 @ 30fps...',
+    '🎬 Video MP4 siap dikirim!'
+  ];
+  const fullText = lines.join('\n');
+  const revealCount = Math.floor(fullText.length * Math.min(p * 1.35, 1));
+  const visibleLines = fullText.slice(0, revealCount).split('\n');
+
+  ctx.font = '700 30px monospace';
+  visibleLines.forEach((ln, idx) => {
+    const ly = cy + 135 + idx * 66;
+    if (ly > cy + ch - 45) return;
+    // Line number
+    ctx.fillStyle = '#475569';
+    ctx.fillText(String(idx + 1).padStart(2, '0'), cx + 32, ly);
+
+    // Syntax color highlighting
+    if (ln.startsWith('$') || ln.startsWith('>')) {
+      ctx.fillStyle = '#38BDF8';
+    } else if (ln.includes('✓') || ln.includes('🎬') || ln.includes('SUCCESS')) {
+      ctx.fillStyle = '#4ADE80';
+    } else if (ln.includes('ERROR') || ln.includes('Gagal')) {
+      ctx.fillStyle = '#F87171';
+    } else if (ln.includes(':') || ln.includes('=')) {
+      ctx.fillStyle = '#FACC15';
+    } else {
+      ctx.fillStyle = '#F8FAFC';
+    }
+
+    const displayLn = ln.length > 36 ? ln.slice(0, 36) : ln;
+    ctx.fillText(displayLn, cx + 95, ly);
+
+    // Blinking cursor on active last line
+    if (idx === visibleLines.length - 1 && Math.floor(t * 4) % 2 === 0) {
+      const tw = ctx.measureText(displayLn).width;
+      ctx.fillStyle = '#FACC15';
+      ctx.fillRect(cx + 102 + tw, ly - 26, 16, 32);
+    }
+  });
+
+  if (data.badge) {
+    roundRect(cx + cw / 2 - 230, cy + ch - 42, 460, 74, 37);
+    ctx.fillStyle = '#FACC15';
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#0F172A';
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0F172A';
+    ctx.font = '900 30px Montserrat, sans-serif';
+    ctx.fillText(String(data.badge).toUpperCase(), cx + cw / 2, cy + ch + 5);
+  }
+  ctx.restore();
+}
+
+// 11. FLOW DIAGRAM (Diagram Alur Sistem dengan Titik Data Bergerak)
+function renderFlowDiagram(data, p, t, pal) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = pal.isDark ? '#FFD600' : pal.ink;
+  ctx.font = '900 48px Montserrat, sans-serif';
+  drawWrappedText(data.title || 'ALUR KERJA OTOMATIS', W / 2, 220, 940, 58);
+
+  const steps = (data.steps || [
+    { icon: '📲', title: 'KIRIM NASKAH', desc: 'Chat atau file .json di Telegram' },
+    { icon: '⚡', title: 'CLOUD RENDER', desc: 'GitHub Actions + Playwright 30 FPS' },
+    { icon: '🎬', title: 'VIDEO MP4 JADI', desc: 'Otomatis terkirim balik siap upload' }
+  ]).slice(0, 3);
+
+  const boxW = 820, boxH = 225, startX = (W - boxW) / 2, startY = 340, gapY = 95;
+
+  steps.forEach((st, i) => {
+    const enter = easeOutBack(Math.max(0, Math.min(p * 2.4 - i * 0.22, 1)));
+    const bx = startX + (1 - enter) * (i % 2 === 0 ? -160 : 160);
+    const by = startY + i * (boxH + gapY);
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(enter * 1.4, 1);
+
+    // Connector line + moving energy dot to next node
+    if (i < steps.length - 1) {
+      const lineX = W / 2;
+      const y1 = by + boxH;
+      const y2 = by + boxH + gapY;
+      ctx.strokeStyle = pal.ink;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(lineX, y1);
+      ctx.lineTo(lineX, y2);
+      ctx.stroke();
+
+      // Arrowhead
+      ctx.fillStyle = pal.ink;
+      ctx.beginPath();
+      ctx.moveTo(lineX - 14, y2 - 18);
+      ctx.lineTo(lineX + 14, y2 - 18);
+      ctx.lineTo(lineX, y2 - 2);
+      ctx.fill();
+
+      // Animated data pulse traveling down
+      const pulseY = y1 + ((t * 1.8 + i * 0.3) % 1) * (gapY - 16);
+      ctx.beginPath();
+      ctx.arc(lineX, pulseY, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#FACC15';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0F172A';
+      ctx.stroke();
+    }
+
+    // Card shadow & body
+    roundRect(bx + 10, by + 12, boxW, boxH, 26);
+    ctx.fillStyle = '#0F172A';
+    ctx.fill();
+
+    roundRect(bx, by, boxW, boxH, 26);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#0F172A';
+    ctx.stroke();
+    drawGlossSweep(bx, by, boxW, boxH, 26, t + i * 0.6, 3.2);
+
+    // Left icon circle
+    ctx.beginPath();
+    ctx.arc(bx + 115, by + boxH / 2, 68, 0, Math.PI * 2);
+    ctx.fillStyle = i === 0 ? '#DBEAFE' : (i === 1 ? '#FEF3C7' : '#DCFCE7');
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0F172A';
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.font = '68px sans-serif';
+    ctx.fillText(st.icon || '⚡', bx + 115, by + boxH / 2 + 24);
+
+    // Text on right
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#0F172A';
+    ctx.font = '900 36px Montserrat, sans-serif';
+    ctx.fillText(String(st.title || '').toUpperCase(), bx + 215, by + 92);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '700 28px Montserrat, sans-serif';
+    drawWrappedText(st.desc || '', bx + 215, by + 142, boxW - 245, 36);
+
+    ctx.restore();
+  });
+}
+
+// Mini Presenter PiP di pojok atas (opsional saat data.presenter = "boy" / "girl")
+function drawMiniPresenter(charType, t) {
+  if (!charType) return;
+  const speaking = isSpeakingAt(t);
+  const blinking = (t % 3.4) > 3.24;
+  const stride = Math.sin(t * 4);
+  const px = 148, py = 165;
+
+  ctx.save();
+  // Lingkaran avatar berbingkai
+  ctx.beginPath();
+  ctx.arc(px + 5, py + 6, 86, 0, Math.PI * 2);
+  ctx.fillStyle = '#0F172A';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(px, py, 86, 0, Math.PI * 2);
+  ctx.fillStyle = '#E0F2FE';
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#0F172A';
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(px, py, 83, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.translate(px, py + 82);
+  ctx.scale(0.68, 0.68);
+  if (String(charType).toLowerCase() === 'girl') {
+    drawGirlCharacter(t, stride * 0.2, speaking, blinking);
+  } else {
+    drawBoyCharacter(t, stride * 0.2, speaking, blinking, 0.05);
+  }
+  ctx.restore();
+}
+
 // HUD Atas: Progress Bar Waktu Video & Indikator Adegan
 function drawTopHud(t, activeIndex, totalScenes, pal) {
   const totalDur = window.SCENES.length ? window.SCENES[window.SCENES.length - 1].end : 1;
@@ -1527,6 +1719,12 @@ function draw(t) {
     case 'comparison_vs':
       renderComparisonVs(data, progress, t, pal);
       break;
+    case 'code_terminal':
+      renderCodeTerminal(data, progress, t, pal);
+      break;
+    case 'flow_diagram':
+      renderFlowDiagram(data, progress, t, pal);
+      break;
     case 'cta_closing':
       renderCtaClosing(data, progress, t, pal);
       break;
@@ -1537,5 +1735,8 @@ function draw(t) {
   }
   ctx.restore();
 
+  if (scene.type !== 'character_story' && data.presenter) {
+    drawMiniPresenter(data.presenter, t);
+  }
   drawTopHud(t, index, window.SCENES.length, pal);
 }
