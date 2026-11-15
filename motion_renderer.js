@@ -755,31 +755,37 @@ function drawBoyCharacter(t, stride, speaking, blinking, waveBoost) {
   ctx.stroke();
   ctx.restore();
 
-  // --- Lengan Kanan (Melambai ramah) ---
+  // --- Lengan Kanan (Siku menekuk keluar ke samping + melambai di samping kepala) ---
   ctx.save();
-  ctx.translate(64, 16);
-  const waveAngle = -0.68 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.22 + waveBoost);
+  ctx.translate(60, 14);
+  const waveAngle = 0.78 + Math.sin(t * (speaking ? 7.5 : 4.2)) * (0.20 + waveBoost);
   ctx.rotate(waveAngle);
-  // Lengan jaket biru
-  roundRect(-14, -84, 28, 88, 14);
+  // Lengan atas (keluar menjauh dari badan ke kanan)
+  roundRect(0, -13, 64, 26, 13);
+  ctx.fillStyle = '#6FB4F5';
+  ctx.fill(); ctx.stroke();
+  // Sendi siku di (56, 0) lalu lengan bawah naik ke atas
+  ctx.translate(56, 0);
+  ctx.rotate(-1.25 + Math.sin(t * 6.0) * 0.14);
+  roundRect(-13, -72, 26, 76, 13);
   ctx.fillStyle = '#6FB4F5';
   ctx.fill(); ctx.stroke();
   // Manset biru
-  roundRect(-15, -88, 30, 14, 6);
+  roundRect(-14, -76, 28, 13, 6);
   ctx.fillStyle = '#539BE0';
   ctx.fill(); ctx.stroke();
-  // Telapak & 5 jari melambai
-  ctx.translate(0, -102);
+  // Telapak & 5 jari melambai bebas di ruang kosong
+  ctx.translate(0, -90);
   ctx.fillStyle = '#F7C9A9';
   for (let f = -2; f <= 2; f++) {
     ctx.save();
     ctx.rotate(f * 0.24);
-    roundRect(-4, -22, 8, 22, 4);
+    roundRect(-4, -21, 8, 21, 4);
     ctx.fill(); ctx.stroke();
     ctx.restore();
   }
   ctx.beginPath();
-  ctx.arc(0, 2, 16, 0, Math.PI * 2);
+  ctx.arc(0, 2, 15, 0, Math.PI * 2);
   ctx.fill(); ctx.stroke();
   ctx.restore();
 
