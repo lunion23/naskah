@@ -51,11 +51,30 @@ class ElevenLabsError(RuntimeError):
         self.code = code
 
 
+def _elevenlabs_keys() -> list[str]:
+    """Kumpulkan semua API key ElevenLabs (dipisah koma/baris baru atau ELEVENLABS_API_KEY_1..10)."""
+    raw_items = []
+    for env_name in ("ELEVENLABS_API_KEYS", "ELEVENLABS_API_KEY"):
+        val = os.getenv(env_name, "").strip()
+        if val:
+            raw_items.extend(val.replace("\n", ",").split(","))
+    for idx in range(1, 11):
+        val = os.getenv(f"ELEVENLABS_API_KEY_{idx}", "").strip()
+        if val:
+            raw_items.append(val)
+    keys = []
+    for k in raw_items:
+        clean = k.strip()
+        if clean and clean not in keys:
+            keys.append(clean)
+    return keys
+
+
 def provider() -> str:
     p = os.getenv("TTS_PROVIDER", "").strip().lower()
     if p in ("edge", "elevenlabs"):
         return p
-    return "elevenlabs" if os.getenv("ELEVENLABS_API_KEY", "").strip() else "edge"
+    return "elevenlabs" if _elevenlabs_keys() else "edge"
 
 
 def label() -> str:
@@ -135,8 +154,8 @@ def _post(url: str, body: dict, key: str, retries: int = 3) -> dict:
     raise RuntimeError("ElevenLabs tidak merespons.")
 
 
-def _eleven(text: str, path: Path, previous_text=None, next_text=None) -> list:
-    key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+def _eleven(text: str, path: Path, previous_text=None, next_text=None, api_key: str = None) -> list:
+    key = (api_key or "").strip() or (_elevenlabs_keys()[0] if _elevenlabs_keys() else "")
     if not key:
         raise RuntimeError("ELEVENLABS_API_KEY belum diisi.")
     voice = os.getenv("ELEVENLABS_VOICE_ID", "").strip() or DEFAULT_VOICE_ID
@@ -172,7 +191,14 @@ def _eleven(text: str, path: Path, previous_text=None, next_text=None) -> list:
 
 
 # ---------------- Edge TTS (cadangan) ----------------
-async def _edge_async(text, path, voice, rate):
+def _clean_tts_text(text: str) -> str:
+    # Hapus karakter emoji/simbol non-ucapan agar Edge TTS tidak menolak permintaan
+    cleaned = "".join(ch for ch in str(text or "") if ord(ch) < 0x2600 or ch in "—–…“”‘’")
+    cleaned = " ".join(cleaned.split()).strip()
+    return cleaned or "Halo."
+
+
+async def _edge_once(text, path, voice, rate):
     import edge_tts
 
     try:
@@ -187,7 +213,27 @@ async def _edge_async(text, path, voice, rate):
             elif chunk["type"] == "WordBoundary":
                 a = chunk["offset"] / 1e7
                 marks.append((a, a + chunk["duration"] / 1e7))
+    if not Path(path).exists() or Path(path).stat().st_size == 0:
+        raise RuntimeError("No audio was received from Edge TTS.")
     return marks
+
+
+async def _edge_async(text, path, voice, rate):
+    clean_text = _clean_tts_text(text)
+    voices_to_try = [voice]
+    for fallback_v in ("id-ID-ArdiNeural", "id-ID-GadisNeural", "en-US-AndrewNeural"):
+        if fallback_v not in voices_to_try:
+            voices_to_try.append(fallback_v)
+
+    last_err = None
+    for v in voices_to_try:
+        for attempt in range(3):
+            try:
+                return await _edge_once(clean_text, path, v, rate)
+            except Exception as e:
+                last_err = e
+                await asyncio.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Edge TTS gagal setelah beberapa percobaan: {last_err}")
 
 
 # ---------------- antarmuka ----------------
@@ -216,18 +262,28 @@ def synthesize_many(sentences, paths, edge_voice=None, edge_rate=None) -> list:
     """Suara untuk satu video (banyak kalimat). Mengembalikan daftar waktu kata per kalimat.
     Satu video selalu memakai satu penyedia: bila ElevenLabs ditolak, SEMUA kalimat dibuat ulang dengan Edge TTS."""
     if provider() == "elevenlabs":
-        try:
-            marks = []
-            for i, (text, path) in enumerate(zip(sentences, paths)):
-                prev = sentences[i - 1] if i > 0 else None
-                nxt = sentences[i + 1] if i + 1 < len(sentences) else None
-                marks.append(_eleven(text, Path(path), prev, nxt))
-            return marks
-        except ElevenLabsError as e:
-            if not _fallback_enabled() or e.code not in FALLBACK_CODES:
-                raise
-            _notes.append(f"ElevenLabs ditolak ({e}). Video ini dibuat dengan suara Edge TTS. "
-                          "Perbaiki ELEVENLABS_VOICE_ID/paket, atau hapus ELEVENLABS_API_KEY untuk memakai Edge TTS terus.")
+        keys = _elevenlabs_keys()
+        if not keys:
+            raise RuntimeError("ELEVENLABS_API_KEY belum diisi.")
+        last_err = None
+        for k_idx, api_key in enumerate(keys):
+            try:
+                marks = []
+                for i, (text, path) in enumerate(zip(sentences, paths)):
+                    prev = sentences[i - 1] if i > 0 else None
+                    nxt = sentences[i + 1] if i + 1 < len(sentences) else None
+                    marks.append(_eleven(text, Path(path), prev, nxt, api_key=api_key))
+                if k_idx > 0:
+                    _notes.append(f"Token ElevenLabs #1 habis/ditolak; otomatis beralih ke Token #{k_idx + 1}.")
+                return marks
+            except ElevenLabsError as e:
+                last_err = e
+                if e.code in FALLBACK_CODES and k_idx + 1 < len(keys):
+                    continue  # Coba token ElevenLabs berikutnya
+                if not _fallback_enabled() or e.code not in FALLBACK_CODES:
+                    raise
+                break
+        _notes.append(f"Semua token ElevenLabs ({len(keys)} token) habis/ditolak ({last_err}). Video ini dibuat dengan suara Edge TTS.")
     voice = edge_voice or os.getenv("EDGE_VOICE") or os.getenv("VOICE") or "id-ID-ArdiNeural"
     rate = edge_rate or os.getenv("EDGE_RATE") or os.getenv("RATE") or "+8%"
     try:
