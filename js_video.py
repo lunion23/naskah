@@ -13,7 +13,6 @@ Mendukung dua mode:
 
 import json
 import math
-import os
 import random
 import re
 import shutil
@@ -82,7 +81,7 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <style>
   html,body{margin:0;background:#060d1f;overflow:hidden;font-family:'Montserrat',sans-serif}
   canvas{display:block}
-  #sub-box{
+  #sub-box{display:none !important;
     position:fixed;left:56px;right:56px;bottom:230px;text-align:center;
     font-size:48px;font-weight:900;line-height:1.35;text-transform:uppercase;
     color:#ffffff;letter-spacing:0.6px;pointer-events:none;z-index:20;
@@ -97,7 +96,7 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
     box-shadow:0 10px 30px rgba(0,0,0,0.65);
     text-shadow:0 3px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000;
   }
-  #sub-box .word{display:inline-block;margin:0 6px;transition:transform 0.08s ease-out}
+  #sub-box .word{display:inline-block;margin:0 10px;transition:transform 0.08s ease-out}
   #sub-box .active{color:#FFD600;transform:scale(1.08)}
 </style></head>
 <body>
@@ -152,7 +151,7 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
       const isAct = (chunkStart + idx) === activeIdx;
       const txt = escHtml(w.text);
       return '<span class="word' + (isAct ? ' active' : '') + '">' + txt + '</span>';
-    }).join('');
+    }).join(' ');
   };
 </script>
 <script>
@@ -427,26 +426,19 @@ def encode_video(frames: Path, audio, seconds: float, out_path: Path, bgm_path: 
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "21", "-preset", "veryfast", "-r", str(FPS)]
 
     if has_audio:
-        voice_gain = float(os.getenv("VOICE_VOLUME", "1.45"))
-        bgm_gain = float(os.getenv("BGM_VOLUME", "0.14"))
-        sfx_gain = float(os.getenv("SFX_VOLUME", "0.42"))
-        filters = [f"[{audio_idx}:a]volume={voice_gain:.2f},apad[voice]"]
+        filters = [f"[{audio_idx}:a]apad[voice]"]
         mix_inputs = ["[voice]"]
         if has_bgm:
-            filters.append(f"[{bgm_idx}:a]volume={bgm_gain:.2f}[bgm]")
+            filters.append(f"[{bgm_idx}:a]volume=0.12[bgm]")
             mix_inputs.append("[bgm]")
         if has_sfx:
-            filters.append(f"[{sfx_idx}:a]volume={sfx_gain:.2f}[sfx]")
+            filters.append(f"[{sfx_idx}:a]volume=0.35[sfx]")
             mix_inputs.append("[sfx]")
         if len(mix_inputs) > 1:
-            # normalize=0 mencegah amix membagi volume 1/N (turun -9.5 dB); dynaudnorm+alimiter menjaga suara keras & jernih
-            filters.append(
-                f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2:normalize=0,"
-                f"alimiter=limit=0.95[aout]"
-            )
-            cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "192k"]
+            filters.append(f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[aout]")
+            cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
         else:
-            cmd += ["-c:a", "aac", "-b:a", "192k", "-af", f"volume={voice_gain:.2f},alimiter=limit=0.95,apad"]
+            cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
 
     cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
     subprocess.run(cmd, check=True)
