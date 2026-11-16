@@ -492,7 +492,8 @@ def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
     mix_wav = None
     if audio is not None:
         mix_wav = workdir / "t10_mix.wav"
-        audio.set_duration(min(audio.duration, DURASI_DETIK)).write_audiofile(
+        dur_audio = min(audio.duration, DURASI_DETIK) if audio.duration is not None else DURASI_DETIK
+        audio.set_duration(dur_audio).write_audiofile(
             str(mix_wav), fps=44100, logger=None
         )
 
