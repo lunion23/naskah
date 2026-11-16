@@ -180,11 +180,14 @@ def parse_text(text):
 
 
 def normalize(raw):
-    text = str(raw.get("text", "")).strip()
+    raw = _unwrap_note_wrapper(raw)
+    if not isinstance(raw, dict):
+        return None
+    text = str(raw.get("text") or raw.get("narasi") or raw.get("script") or "").strip()
     if not text:
         return None
     return {
-        "title": str(raw.get("title") or " ".join(text.split()[:5])),
+        "title": str(raw.get("title") or raw.get("judul") or " ".join(text.split()[:5])),
         "keyword": str(raw.get("keyword") or "nature"),
         "text": text,
     }
@@ -199,8 +202,9 @@ def download_text(doc):
 
 def read_document(doc):
     content = download_text(doc)
-    if doc.get("file_name", "").lower().endswith(".json"):
-        data = json.loads(content)
+    cleaned = _clean_json_text(content)
+    if doc.get("file_name", "").lower().endswith(".json") or cleaned.startswith(("{", "[")):
+        data = _unwrap_note_wrapper(json.loads(cleaned))
         if isinstance(data, dict):
             data = [data]
         items = [normalize(x) for x in data]
@@ -369,6 +373,8 @@ def extract_motion(msg):
     m = re.match(r"^/motion(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
     if m:
         body = m.group(1).strip()
+        if not body and msg.get("reply_to_message", {}).get("document"):
+            return _parse_motion_json(download_text(msg["reply_to_message"]["document"]))
         if not body:
             return []
         cleaned_body = _clean_json_text(body)
@@ -425,11 +431,23 @@ def extract_react(msg):
     text = msg.get("text") or ""
     m = re.match(r"^/react(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
     if m:
-        item = parse_text(m.group(1))
+        body = m.group(1).strip()
+        if not body and msg.get("reply_to_message", {}).get("document"):
+            return read_document(msg["reply_to_message"]["document"])
+        item = parse_text(body)
         return [item] if item else []
     caption = msg.get("caption") or ""
-    if msg.get("document") and re.match(r"^/react\b", caption, re.I):
-        return read_document(msg["document"])
+    if msg.get("document"):
+        if re.match(r"^/react\b", caption, re.I):
+            return read_document(msg["document"])
+        if not caption:
+            try:
+                raw = _unwrap_note_wrapper(json.loads(_clean_json_text(download_text(msg["document"]))))
+                items = raw if isinstance(raw, list) else [raw]
+                if items and isinstance(items[0], dict) and str(items[0].get("mode", "")).lower() == "react":
+                    return read_document(msg["document"])
+            except Exception:
+                pass
     return None
 
 
@@ -493,19 +511,39 @@ def handle_js(chat_id, code):
 
 
 # ---------------- Template T10 Grid Lampu Sorot ----------------
+def _is_t10_json(raw_text: str) -> bool:
+    try:
+        cleaned = _clean_json_text(raw_text)
+        if not cleaned.startswith("{"):
+            return False
+        obj = _unwrap_note_wrapper(json.loads(cleaned))
+        if not isinstance(obj, dict):
+            return False
+        t10_keys = {"pembuka", "kartu", "lelah", "pelan", "tekanan", "penutup"}
+        return len(t10_keys.intersection(obj.keys())) >= 2
+    except Exception:
+        return False
+
+
 def extract_t10(msg):
-    """Kembalikan konfigurasi dict T10 jika pesan memakai /t10, None jika bukan."""
+    """Kembalikan konfigurasi dict T10 jika pesan memakai /t10 atau file JSON T10 tanpa caption."""
     from t10_video import parse_t10_input
 
     doc = msg.get("document")
     caption = (msg.get("caption") or "").strip()
-    if doc and re.match(r"^/t10\b", caption, re.I):
-        return parse_t10_input(download_text(doc))
+    if doc:
+        raw_text = download_text(doc)
+        if re.match(r"^/t10\b", caption, re.I):
+            return parse_t10_input(raw_text)
+        if not caption and _is_t10_json(raw_text):
+            return parse_t10_input(raw_text)
 
     text = msg.get("text") or ""
     m = re.match(r"^/t10(?:@\w+)?(?:\s+|$)(.*)", text, re.S | re.I)
     if m:
         body = m.group(1).strip()
+        if not body and msg.get("reply_to_message", {}).get("document"):
+            return parse_t10_input(download_text(msg["reply_to_message"]["document"]))
         return parse_t10_input(body) if body else {}
     return None
 
