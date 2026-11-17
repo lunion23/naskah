@@ -553,10 +553,10 @@ def handle_t10(chat_id, k_data):
         send(chat_id, NO_BROWSER)
         return
     if not k_data:
-        send(chat_id, T10_HELP)
-        return
+        from t10_video import parse_t10_input
+        k_data = parse_t10_input("{}")
 
-    send(chat_id, "🎬 Merender Template T10 Grid Lampu Sorot (16 detik)...")
+    send(chat_id, "🎬 Merender Template T10 Grid Lampu Sorot (durasi otomatis mengikuti suara)...")
     try:
         from t10_video import build_t10_video
 
