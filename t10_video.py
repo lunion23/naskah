@@ -1,11 +1,19 @@
 """
-Template T10 Grid Lampu Sorot -> Video MP4 Vertikal 1080x1920 (16 Detik / 480 Frame)
+CloudPad Note
+Title: t10_video
+Date: 2026-11-18 02:10:18
+Tags: lokal, py
+"""
+
+"""
+Template T10 Grid Lampu Sorot -> Video MP4 Vertikal 1080x1920 (Durasi Dinamis mengikuti TTS)
 Adaptasi dari template Remotion T10Sorot oleh Maliki Saputra (@malikisaputra) — https://malikisaputra.biz.id
 Terintegrasi langsung dengan mesin Playwright js_video.py, tts_provider.py, dan subtitles_export.py.
 """
 
 import base64
 import json
+import math
 import re
 from pathlib import Path
 
@@ -18,8 +26,8 @@ import tts_provider
 from subtitles_export import safe_export
 
 FPS = 30
-DURASI_FRAME = 480  # 16.0 detik @ 30fps
-DURASI_DETIK = DURASI_FRAME / FPS
+BASE_FRAMES = 480  # Basis acuan animasi asli (16.0 detik @ 30fps)
+MIN_DURASI_DETIK = 12.0  # Durasi minimum jika tanpa narasi / narasi sangat pendek
 
 ASSETS_DIR = Path("assets/t10")
 
@@ -80,25 +88,114 @@ def _build_narration_from_k(k: dict) -> str:
     return " ".join(p.strip() for p in parts if p.strip())
 
 
+def _auto_build_k_from_plain_text(raw_text: str, narration_override: str = None) -> dict:
+    """Konversi naskah teks biasa (paragraf / judul + isi) menjadi konfigurasi kartu T10 otomatis."""
+    title = None
+    body_lines = []
+    for line in raw_text.splitlines():
+        m_title = re.match(r"^\s*(?:judul|title)\s*:\s*(.+)$", line, re.I)
+        if m_title and not title:
+            title = m_title.group(1).strip()
+        else:
+            body_lines.append(line.strip())
+
+    clean_body = " ".join(l for l in body_lines if l).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_body) if s.strip()]
+    k = json.loads(json.dumps(DEFAULT_K))
+
+    # Ambil kata kunci dari judul atau kalimat pertama untuk pembuka & penutup
+    topic_words = re.findall(r"[A-Za-zÀ-ÿ0-9]+", (title or (sentences[0] if sentences else "FOKUS")))
+    key_label = (topic_words[-1] if topic_words else "FOKUS").upper()[:14]
+    first_words = [w.upper() for w in topic_words[:2]]
+    if len(first_words) >= 2:
+        k["pembuka"]["depan"] = first_words[0]
+        k["pembuka"]["redup"] = first_words[1]
+    k["pembuka"]["label"] = key_label
+
+    if sentences:
+        s0_words = sentences[0].rstrip(".!?").split()
+        k["lelah"]["kata"] = (s0_words[0].capitalize() + ".") if s0_words else "Penting."
+        k["lelah"]["kecil"] = " ".join(s0_words[1:6]) if len(s0_words) > 1 else "Simak poin utamanya."
+
+    # Isi 4 kartu dari kalimat-kalimat tengah
+    emojis = ["💡", "⚙️", "🔥", "🚀"]
+    mid_sentences = sentences[1:5] if len(sentences) > 1 else sentences
+    cards = []
+    for idx in range(4):
+        src = mid_sentences[idx % len(mid_sentences)] if mid_sentences else "Fokus pada proses"
+        w_list = [w.strip(".,!?;:") for w in src.split() if w.strip(".,!?;:")]
+        line1 = " ".join(w_list[:2]) if w_list else "Langkah"
+        line2 = " ".join(w_list[2:4]) if len(w_list) > 2 else "penting"
+        cards.append([emojis[idx], f"{line1}\n{line2}"])
+    k["kartu"] = cards
+
+    k["pelan"]["depan"] = "Kunci utama"
+    k["pelan"]["emas"] = key_label
+    k["pelan"]["bawah"] = "lakukan secara konsisten"
+
+    if len(sentences) >= 2:
+        last_words = [w.strip(".,!?;:").upper() for w in sentences[-1].split() if w.strip(".,!?;:")]
+        if len(last_words) >= 2:
+            k["penutup"]["atas"] = " ".join(last_words[-4:-1]) or "KUNCI UNTUK"
+            k["penutup"]["besar"] = last_words[-1][:12]
+
+    k["narration"] = narration_override or clean_body or _build_narration_from_k(k)
+    return k
+
+
 def parse_t10_input(raw_text: str) -> dict:
     """
     Mendukung 2 format input:
     1. JSON lengkap (bisa kustom semua field K + opsional 'narasi' / 'text')
     2. Teks berpemisah '|' (mode cepat 7 bagian atau lengkap 19 bagian)
     """
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I).strip()
+    cleaned = raw_text.lstrip("\ufeff").strip()
+    cleaned = re.sub(r"^```(?:json|text|txt)?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
+    cleaned = re.sub(r"^\s*/t10(?:@\w+)?\s*", "", cleaned, count=1, flags=re.I).strip()
+    cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned).strip()
 
     k = json.loads(json.dumps(DEFAULT_K))
     narration = None
 
-    if cleaned.startswith("{"):
+    if cleaned.startswith(("{", "[")):
         user_json = json.loads(cleaned)
-        narration = user_json.pop("narasi", None) or user_json.pop("text", None)
+        # Buka wrapper aplikasi catatan HP seperti {"content": "{...}"}
+        if isinstance(user_json, dict) and "content" in user_json and not any(
+            x in user_json for x in ("pembuka", "kartu", "narasi", "text")
+        ):
+            inner = str(user_json["content"]).strip()
+            if inner.startswith(("{", "[")):
+                user_json = json.loads(inner)
+        if isinstance(user_json, list) and user_json:
+            user_json = user_json[0]
+        if not isinstance(user_json, dict):
+            raise ValueError("Isi JSON T10 harus berupa objek {...}")
+
+        narration = (
+            user_json.pop("narasi", None)
+            or user_json.pop("text", None)
+            or user_json.pop("narration", None)
+            or user_json.pop("script", None)
+        )
+        # Jika JSON hanya berisi {"mode": "t10", "title": "...", "text": "..."} tanpa struktur kartu,
+        # otomatis bangunkan kartu dari teksnya!
+        has_t10_structure = any(
+            key in user_json for key in ("pembuka", "kartu", "lelah", "pelan", "tekanan", "penutup")
+        )
+        if not has_t10_structure and narration:
+            plain_title = str(user_json.get("title") or user_json.get("judul") or "").strip()
+            combined = f"judul: {plain_title}\n{narration}" if plain_title else str(narration)
+            return _auto_build_k_from_plain_text(combined, narration_override=str(narration).strip())
+
         for key, val in user_json.items():
+            if val is None or val == "":
+                continue
             if isinstance(val, dict) and isinstance(k.get(key), dict):
-                k[key].update(val)
+                for sub_k, sub_v in val.items():
+                    if sub_v is not None and sub_v != "":
+                        k[key][sub_k] = sub_v
             else:
                 k[key] = val
     else:
@@ -143,9 +240,8 @@ def parse_t10_input(raw_text: str) -> dict:
             if len(parts) > 6:
                 k["penutup"]["besar"] = parts[6]
         else:
-            raise ValueError(
-                "Format teks T10 minimal berisi 2 bagian yang dipisah tanda '|'. Ketik /t10help untuk contoh."
-            )
+            # Otomatis konversi teks biasa / naskah paragraf menjadi struktur T10
+            k = _auto_build_k_from_plain_text(body, narration_override=narration)
 
     k["gambar"] = {
         "mahkota": _img_to_data_uri("mahkota.png"),
@@ -180,6 +276,9 @@ T10_HTML_TEMPLATE = """<!doctype html>
 const K = __K_JSON__;
 const h = React.createElement;
 const FPS = 30;
+const BASE_FRAMES = 480;
+const TOTAL_FRAMES = K.totalFrames || BASE_FRAMES;
+
 const SERIF = "'Instrument Serif', Georgia, serif";
 const INTER = "'Inter', sans-serif";
 const ARCHIVO = "'Archivo Black', sans-serif";
@@ -455,7 +554,10 @@ function T10SorotApp(props) {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 function draw(t) {
-  const frame = Math.min(479, Math.max(0, Math.round(t * FPS)));
+  // Petakan waktu aktual (t) secara proporsional ke basis 480 frame
+  const actualFrame = t * FPS;
+  const scaledFrame = (actualFrame / TOTAL_FRAMES) * BASE_FRAMES;
+  const frame = Math.min(BASE_FRAMES - 1, Math.max(0, Math.round(scaledFrame)));
   ReactDOM.flushSync(function() {
     root.render(h(T10SorotApp, { frame: frame }));
   });
@@ -466,7 +568,7 @@ function draw(t) {
 
 
 def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
-    """Merender template T10Sorot (16 detik) + suara TTS + musik latar + SRT/JSON."""
+    """Merender template T10Sorot (durasi dinamis sesuai TTS) + musik latar + SRT/JSON."""
     workdir.mkdir(parents=True, exist_ok=True)
     narration = k_data.get("narration", "").strip()
     sentences = AS.split_sentences(narration)
@@ -474,33 +576,41 @@ def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
     audio = None
     all_marks = []
     audio_clips = []
+    durasi_detik = 16.0  # Default jika tidak ada narasi
+
     if sentences:
         print(f"• Membuat suara narasi T10 ({tts_provider.label()})...")
         audio_paths, all_marks = AS.make_voice(sentences, workdir)
         audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
         voice = concatenate_audioclips(audio_clips)
 
+        # Tambah buffer 0.8 detik di akhir agar penutup tidak terpotong mendadak
+        durasi_detik = max(MIN_DURASI_DETIK, round(voice.duration + 0.8, 2))
+        print(f"• Durasi dinamis T10: {durasi_detik:.2f} detik (suara: {voice.duration:.2f}d)")
+
         if AS.MUSIC:
             try:
-                audio = CompositeAudioClip([voice, AS.make_music(DURASI_DETIK)])
+                audio = CompositeAudioClip([voice, AS.make_music(durasi_detik)])
             except Exception as e:
                 print(f"[!] Musik dilewati: {e}")
                 audio = voice
         else:
             audio = voice
 
+    total_frames = max(1, math.ceil(durasi_detik * FPS))
+    k_data["totalFrames"] = total_frames
+
     mix_wav = None
     if audio is not None:
         mix_wav = workdir / "t10_mix.wav"
-        dur_audio = min(audio.duration, DURASI_DETIK) if audio.duration is not None else DURASI_DETIK
-        audio.set_duration(dur_audio).write_audiofile(
+        audio.set_duration(durasi_detik).write_audiofile(
             str(mix_wav), fps=44100, logger=None
         )
 
     blob = json.dumps(k_data, ensure_ascii=False).replace("</", "<\/")
     html = T10_HTML_TEMPLATE.replace("__K_JSON__", blob)
 
-    out = js_video.render_html_to_mp4(html, DURASI_DETIK, mix_wav, out_path, workdir)
+    out = js_video.render_html_to_mp4(html, durasi_detik, mix_wav, out_path, workdir)
 
     if sentences and audio_clips:
         title = f"{k_data['pembuka']['depan']} {k_data['pembuka']['label']}".strip()
@@ -509,7 +619,7 @@ def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
             sentences,
             [c.duration for c in audio_clips],
             all_marks,
-            DURASI_DETIK,
+            durasi_detik,
             out,
         )
     return out

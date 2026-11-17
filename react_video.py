@@ -1,15 +1,29 @@
 """
-Naskah teks -> video animasi bergaya React yang SINKRON dengan suara.
+CloudPad Note
+Title: react_video
+Date: 2026-11-18 02:11:26
+Tags: lokal, py
+"""
 
-Alur:
-  1. Suara per kalimat + waktu tiap kata (Edge TTS), memakai fungsi dari auto_shorts.py.
-  2. Susun halaman HTML berisi komponen React (tanpa JSX, React dari cdnjs) yang menampilkan
-     judul, kartu kata yang menyala sesuai waktu ucap, latar bergerak, dan bilah progres.
-  3. Rekam frame lewat js_video.py, lalu gabungkan dengan suara dan musik latar.
+"""
+Naskah teks -> video animasi bergaya React v3 (Kinetic Editorial + Dynamic SVG Scenes) yang SINKRON dengan suara.
+
+Peningkatan v3:
+  1. Penghitung Poin Akurat: Kata urutan ("Pertama", "Kedua", dst.) selalu mulai dari POIN 01,
+     tidak bergeser oleh kalimat pembuka/statistik sebelumnya.
+  2. Ikon Vektor (SVG) Tematik Otomatis: Mendeteksi topik tiap kalimat (mesin/oli, suhu/radiator,
+     bahan bakar/filter, kecepatan/pengemudi, biaya/uang, waktu/jadwal, statistik, dll.) dan
+     menampilkan ikon vektor tajam dengan animasi denyut halus di kartu atas.
+  3. Ringkasan Visual Inti (Tidak Redundan): Kartu atas menampilkan ringkasan frasa inti (3-6 kata)
+     yang melengkapi teks karaoke di bawah, bukan mengulang kalimat mentah.
+  4. Kinetic Karaoke Typography + Pratinjau Kalimat Berikutnya + Audio Equalizer Aktif.
+  5. Fix durasi CompositeAudioClip (.set_duration(total)) untuk MoviePy 1.0.3.
 """
 
 import json
 import os
+import re
+import time
 from pathlib import Path
 
 from moviepy.audio.AudioClip import CompositeAudioClip
@@ -21,18 +35,25 @@ import tts_provider
 from subtitles_export import safe_export
 
 MAX_SECONDS = 90
-LABEL = os.getenv("REACT_LABEL", "FAKTA UNIK")   # teks kecil di atas judul
-PALETTES = [  # (warna latar 1, warna latar 2, warna sorot)
-    ("#1e3a8a", "#0f172a", "#fbbf24"),
-    ("#064e3b", "#022c22", "#34d399"),
-    ("#7c2d12", "#1c0a05", "#fb923c"),
-    ("#4c1d95", "#1e1b4b", "#f472b6"),
-    ("#0c4a6e", "#082f49", "#38bdf8"),
+LABEL = os.getenv("REACT_LABEL", "FAKTA & EDUKASI")
+PALETTES = [
+    # (bg1, bg2, accent, accentSoft, cardBg)
+    ("#0f172a", "#1e3a8a", "#fbbf24", "rgba(251, 191, 36, 0.18)", "rgba(15, 23, 42, 0.65)"),
+    ("#022c22", "#065f46", "#34d399", "rgba(52, 211, 153, 0.18)", "rgba(2, 44, 34, 0.65)"),
+    ("#1c0a05", "#7c2d12", "#fb923c", "rgba(251, 146, 60, 0.18)", "rgba(28, 10, 5, 0.65)"),
+    ("#1e1b4b", "#4c1d95", "#f472b6", "rgba(244, 114, 182, 0.18)", "rgba(30, 27, 75, 0.65)"),
+    ("#082f49", "#0369a1", "#38bdf8", "rgba(56, 189, 248, 0.18)", "rgba(8, 47, 73, 0.65)"),
 ]
 
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8">
-<style>html,body{margin:0;background:#000;overflow:hidden}#root{width:1080px;height:1920px;overflow:hidden}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#050811;overflow:hidden}
+  #root{width:1080px;height:1920px;overflow:hidden}
+</style>
 </head><body><div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -40,12 +61,21 @@ PAGE = """<!doctype html>
 const DATA = __DATA__;
 const h = React.createElement;
 const clamp = (x, a = 0, b = 1) => Math.min(Math.max(x, a), b);
-const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
-const pop = (x) => { x = clamp(x); const c = 1.70158; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
-const C1 = DATA.palette[0], C2 = DATA.palette[1], ACC = DATA.palette[2];
-const FONT = "'Segoe UI', 'DejaVu Sans', Arial, sans-serif";
+const easeOut = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const pop = (x) => {
+  x = clamp(x);
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+};
 
-// Kelompokkan kata jadi potongan (maks 4 kata, berhenti di tanda baca)
+const C1 = DATA.palette[0];
+const C2 = DATA.palette[1];
+const ACC = DATA.palette[2];
+const ACC_SOFT = DATA.palette[3];
+const CARD_BG = DATA.palette[4];
+const FONT_MAIN = "'Plus Jakarta Sans', 'Segoe UI', 'DejaVu Sans', sans-serif";
+const FONT_NUM = "'Space Grotesk', 'Plus Jakarta Sans', sans-serif";
+
 function buildChunks(words, size) {
   const chunks = [];
   let cur = [];
@@ -62,99 +92,480 @@ function buildChunks(words, size) {
 }
 const CHUNKS = buildChunks(DATA.words, 4);
 
+function getActiveSentence(t) {
+  const list = DATA.sentences || [];
+  for (let i = 0; i < list.length; i++) {
+    if (t >= list[i].start && t < list[i].end) return { index: i, item: list[i] };
+  }
+  return list.length ? { index: list.length - 1, item: list[list.length - 1] } : null;
+}
+
+function isSpeaking(t) {
+  return DATA.words.some((w) => t >= w.s - 0.04 && t <= w.e + 0.04);
+}
+
+// Komponen Ikon Vektor SVG Tajam Sesuai Tema Kalimat
+function TopicSvg(props) {
+  const kind = props.kind || "spark";
+  const color = props.color || ACC;
+  const strokeProps = {
+    fill: "none", stroke: color, strokeWidth: 3.2,
+    strokeLinecap: "round", strokeLinejoin: "round",
+  };
+  let paths = [];
+  if (kind === "gear") {
+    paths = [
+      h("circle", { key: "c1", cx: 24, cy: 24, r: 7, ...strokeProps }),
+      h("path", { key: "p1", d: "M24 5v4M24 39v4M5 24h4M39 24h4M10.5 10.5l2.8 2.8M34.7 34.7l2.8 2.8M37.5 10.5l-2.8 2.8M13.3 34.7l-2.8 2.8", ...strokeProps }),
+      h("circle", { key: "c2", cx: 24, cy: 24, r: 14, ...strokeProps, strokeDasharray: "6 5" }),
+    ];
+  } else if (kind === "drop") {
+    paths = [
+      h("path", { key: "p1", d: "M24 6C24 6 11 20.2 11 29a13 13 0 0 0 26 0C37 20.2 24 6 24 6z", ...strokeProps }),
+      h("path", { key: "p2", d: "M18 30a6 6 0 0 0 6 6", ...strokeProps }),
+    ];
+  } else if (kind === "temp") {
+    paths = [
+      h("path", { key: "p1", d: "M28 27.5V11a4 4 0 0 0-8 0v16.5a8 8 0 1 0 8 0z", ...strokeProps }),
+      h("circle", { key: "c1", cx: 24, cy: 34, r: 3, fill: color }),
+      h("path", { key: "p2", d: "M24 20v11", ...strokeProps }),
+    ];
+  } else if (kind === "shield") {
+    paths = [
+      h("path", { key: "p1", d: "M24 5L9 11v11c0 10.2 6.4 19.6 15 22 8.6-2.4 15-11.8 15-22V11L24 5z", ...strokeProps }),
+      h("path", { key: "p2", d: "M17.5 24l4.5 4.5 9-9", ...strokeProps }),
+    ];
+  } else if (kind === "speed") {
+    paths = [
+      h("path", { key: "p1", d: "M8 31a16 16 0 1 1 32 0", ...strokeProps }),
+      h("path", { key: "p2", d: "M24 31l8-11", ...strokeProps }),
+      h("circle", { key: "c1", cx: 24, cy: 31, r: 3, fill: color }),
+    ];
+  } else if (kind === "chart") {
+    paths = [
+      h("path", { key: "p1", d: "M8 38h32", ...strokeProps }),
+      h("rect", { key: "r1", x: 11, y: 24, width: 6, height: 14, rx: 2, ...strokeProps }),
+      h("rect", { key: "r2", x: 21, y: 16, width: 6, height: 22, rx: 2, ...strokeProps }),
+      h("rect", { key: "r3", x: 31, y: 9, width: 6, height: 29, rx: 2, ...strokeProps }),
+    ];
+  } else if (kind === "clock") {
+    paths = [
+      h("circle", { key: "c1", cx: 24, cy: 24, r: 17, ...strokeProps }),
+      h("path", { key: "p1", d: "M24 14v10l7 4", ...strokeProps }),
+    ];
+  } else {
+    paths = [
+      h("path", { key: "p1", d: "M24 6l4.2 11.8L40 22l-11.8 4.2L24 38l-4.2-11.8L8 22l11.8-4.2L24 6z", ...strokeProps }),
+    ];
+  }
+  return h("svg", { width: 52, height: 52, viewBox: "0 0 48 48" }, paths);
+}
+
 function Background(props) {
   const t = props.t;
   const orbs = [0, 1, 2, 3, 4].map((i) => {
-    const r = 260 + i * 60;
-    const x = 540 + Math.sin(t * 0.5 + i * 1.9) * 420;
-    const y = 960 + Math.cos(t * 0.4 + i * 2.3) * 760;
+    const r = 280 + i * 65;
+    const x = 540 + Math.sin(t * 0.45 + i * 1.7) * 430;
+    const y = 960 + Math.cos(t * 0.35 + i * 2.1) * 780;
     return h("div", {
-      key: i,
+      key: "orb-" + i,
       style: {
-        position: "absolute", left: x - r, top: y - r, width: r * 2, height: r * 2, borderRadius: "50%",
-        background: "radial-gradient(circle, " + ACC + "40 0%, " + ACC + "00 70%)",
+        position: "absolute", left: x - r, top: y - r, width: r * 2, height: r * 2,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, " + ACC + "33 0%, " + ACC + "00 70%)",
       },
     });
   });
-  return h("div", {
-    style: {
-      position: "absolute", left: 0, top: 0, width: 1080, height: 1920,
-      background: "linear-gradient(" + (160 + Math.sin(t * 0.3) * 20) + "deg, " + C1 + ", " + C2 + " 65%)",
-    },
-  }, orbs);
-}
 
-function Title(props) {
-  const t = props.t;
-  const k = pop(t / 0.7);
+  const particles = Array.from({ length: 14 }).map((_, i) => {
+    const px = ((i * 197 + 80) % 980) + 50 + Math.sin(t * 0.8 + i) * 22;
+    const py = 1920 - (((t * (45 + (i % 4) * 18) + i * 140) % 1960));
+    const sz = 6 + (i % 3) * 4;
+    return h("div", {
+      key: "pt-" + i,
+      style: {
+        position: "absolute", left: px, top: py, width: sz, height: sz,
+        borderRadius: "50%", background: ACC, opacity: 0.28 + (i % 3) * 0.12,
+      },
+    });
+  });
+
   return h("div", {
     style: {
-      position: "absolute", top: 190, left: 70, width: 940, textAlign: "center",
-      opacity: clamp(t / 0.4), transform: "scale(" + (0.6 + 0.4 * k) + ")",
+      position: "absolute", inset: 0,
+      background: "linear-gradient(" + (155 + Math.sin(t * 0.25) * 18) + "deg, " + C1 + " 0%, " + C2 + " 55%, #050811 100%)",
     },
   },
-    h("div", { style: { fontSize: 44, letterSpacing: 10, color: ACC, fontWeight: 800, marginBottom: 24 } }, DATA.label),
-    h("div", { style: { fontSize: 72, fontWeight: 800, lineHeight: 1.15, color: "#fff", textShadow: "0 4px 24px rgba(0,0,0,0.45)" } }, DATA.title)
+    orbs,
+    h("div", {
+      style: {
+        position: "absolute", inset: 0,
+        backgroundImage: "linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)",
+        backgroundSize: "72px 72px",
+        transform: "translateY(" + ((t * 18) % 72) + "px)",
+      },
+    }),
+    particles
   );
 }
 
-function ChunkCard(props) {
+function Header(props) {
+  const t = props.t;
+  const active = getActiveSentence(t);
+  const total = (DATA.sentences || []).length || 1;
+  const curNum = active ? active.index + 1 : 1;
+  const enter = easeOut(t / 0.45);
+
+  return h("div", {
+    style: {
+      position: "absolute", top: 76, left: 64, right: 64,
+      opacity: enter, transform: "translateY(" + ((1 - enter) * -24) + "px)",
+    },
+  },
+    h("div", {
+      style: {
+        display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24,
+      },
+    },
+      h("div", {
+        style: {
+          display: "inline-flex", alignItems: "center", gap: 12,
+          padding: "12px 24px", borderRadius: 999,
+          background: ACC_SOFT, border: "2px solid " + ACC,
+          color: ACC, fontSize: 24, fontWeight: 800, letterSpacing: 3,
+        },
+      }, "✦ " + DATA.label),
+      h("div", {
+        style: {
+          padding: "10px 22px", borderRadius: 999,
+          background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.2)",
+          color: "#fff", fontSize: 24, fontWeight: 700, fontFamily: FONT_NUM,
+        },
+      }, String(curNum).padStart(2, "0") + " / " + String(total).padStart(2, "0"))
+    ),
+    h("div", {
+      style: {
+        fontSize: 54, fontWeight: 800, lineHeight: 1.18, color: "#ffffff",
+        textShadow: "0 6px 28px rgba(0,0,0,0.45)",
+      },
+    }, DATA.title)
+  );
+}
+
+function VisualFocusCard(props) {
+  const t = props.t;
+  const active = getActiveSentence(t);
+  if (!active) return null;
+  const s = active.item;
+  const localT = t - s.start;
+  const enter = easeOut(localT / 0.30);
+  const scale = 0.93 + 0.07 * pop(localT / 0.42);
+  const iconPulse = 1 + 0.06 * Math.sin(t * 4.5);
+
+  return h("div", {
+    style: {
+      position: "absolute", left: 64, top: 360, width: 952, height: 390, boxSizing: "border-box",
+      borderRadius: 42, padding: "36px 44px",
+      background: CARD_BG,
+      border: "2.5px solid rgba(255,255,255,0.18)",
+      boxShadow: "0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.2)",
+      opacity: enter,
+      transform: "translateY(" + ((1 - enter) * 30) + "px) scale(" + scale + ")",
+      display: "flex", flexDirection: "column", justifyContent: "space-between",
+    },
+  },
+    h("div", {
+      style: {
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      },
+    },
+      h("div", {
+        style: {
+          display: "inline-flex", alignItems: "center", gap: 14,
+          padding: "10px 22px", borderRadius: 18,
+          background: "rgba(255,255,255,0.1)", color: ACC,
+          fontSize: 25, fontWeight: 800, letterSpacing: 2,
+        },
+      }, s.badge),
+      h("div", {
+        style: {
+          width: 84, height: 84, borderRadius: 24,
+          background: ACC_SOFT, border: "2px solid " + ACC,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transform: "scale(" + iconPulse + ")",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        },
+      }, h(TopicSvg, { kind: s.svgKind, color: ACC }))
+    ),
+    s.stat ? h("div", {
+      style: {
+        display: "flex", flexDirection: "column", gap: 8,
+      },
+    },
+      h("div", {
+        style: {
+          fontFamily: FONT_NUM, fontSize: 106, fontWeight: 700, lineHeight: 1,
+          color: ACC, textShadow: "0 6px 24px rgba(0,0,0,0.4)",
+        },
+      }, s.stat),
+      h("div", {
+        style: {
+          fontSize: 34, fontWeight: 700, lineHeight: 1.22, color: "#f8fafc",
+        },
+      }, s.summary)
+    ) : h("div", {
+      style: {
+        fontSize: 48, fontWeight: 800, lineHeight: 1.24, color: "#ffffff",
+      },
+    }, s.summary),
+    h("div", {
+      style: {
+        fontSize: 26, fontWeight: 700, color: "rgba(255,255,255,0.72)",
+        borderTop: "1.5px solid rgba(255,255,255,0.12)", paddingTop: 16,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      },
+    },
+      h("span", null, s.tagLine),
+      h("span", { style: { color: ACC, fontWeight: 800, letterSpacing: 1.5 } }, "● FOKUS ADEGAN")
+    )
+  );
+}
+
+function KaraokeCard(props) {
   const t = props.t;
   let idx = -1;
   for (let i = 0; i < CHUNKS.length; i++) if (t >= CHUNKS[i].start) idx = i;
   if (idx < 0) return null;
   const c = CHUNKS[idx];
-  const enter = ease((t - c.start) / 0.22);
+  const nextC = idx + 1 < CHUNKS.length ? CHUNKS[idx + 1] : null;
+  const enter = easeOut((t - c.start) / 0.18);
   let active = 0;
   c.words.forEach((w, i) => { if (t >= w.s) active = i; });
+
   return h("div", {
     style: {
-      position: "absolute", left: 60, top: 780, width: 960, minHeight: 440, boxSizing: "border-box",
-      display: "flex", flexWrap: "wrap", justifyContent: "center", alignContent: "center", gap: "10px 28px",
-      padding: "60px 50px", borderRadius: 56, background: "rgba(0,0,0,0.30)",
-      border: "3px solid rgba(255,255,255,0.14)", opacity: enter, transform: "translateY(" + (1 - enter) * 50 + "px)",
+      position: "absolute", left: 64, top: 790, width: 952, height: 690, boxSizing: "border-box",
+      borderRadius: 48, padding: "54px 44px",
+      background: "rgba(5, 8, 17, 0.58)",
+      border: "2.5px solid rgba(255,255,255,0.15)",
+      boxShadow: "0 28px 70px rgba(0,0,0,0.5)",
+      display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "center",
+      opacity: enter, transform: "translateY(" + ((1 - enter) * 26) + "px)",
     },
   },
-    c.words.map((w, i) => {
-      const isActive = i === active;
-      const spoken = t >= w.s;
-      const scale = isActive ? 1 + 0.2 * Math.max(0, 1 - (t - w.s) / 0.2) : 1;
-      return h("span", {
-        key: i,
-        style: {
-          fontSize: 104, fontWeight: 800, display: "inline-block", fontFamily: FONT,
-          color: isActive ? ACC : "#ffffff", opacity: spoken ? 1 : 0.3, transform: "scale(" + scale + ")",
-          textShadow: "0 4px 18px rgba(0,0,0,0.5)",
-        },
-      }, w.w);
-    })
+    h("div", {
+      style: {
+        fontSize: 22, fontWeight: 800, letterSpacing: 4, color: "rgba(255,255,255,0.45)",
+      },
+    }, "NARASI UTAMA"),
+    h("div", {
+      style: {
+        display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center",
+        gap: "18px 22px", width: "100%",
+      },
+    },
+      c.words.map((w, i) => {
+        const isActive = i === active;
+        const spoken = t >= w.s;
+        const bounce = isActive ? 1 + 0.12 * Math.max(0, 1 - (t - w.s) / 0.18) : 1;
+        return h("span", {
+          key: idx + "-" + i,
+          style: {
+            fontSize: 82, fontWeight: 800, fontFamily: FONT_MAIN, lineHeight: 1.15,
+            padding: isActive ? "10px 26px" : "10px 8px",
+            borderRadius: 24,
+            background: isActive ? ACC : "transparent",
+            color: isActive ? "#090d16" : "#ffffff",
+            opacity: spoken ? 1 : 0.32,
+            transform: "scale(" + bounce + ")",
+            boxShadow: isActive ? "0 12px 30px " + ACC + "66" : "none",
+          },
+        }, w.w);
+      })
+    ),
+    h("div", {
+      style: {
+        minHeight: 44, fontSize: 30, fontWeight: 700, color: "rgba(255,255,255,0.38)",
+        textAlign: "center",
+      },
+    }, nextC ? nextC.words.map((w) => w.w).join(" ") : "✓ Selesai")
   );
 }
 
-function Progress(props) {
-  return h("div", { style: { position: "absolute", left: 80, top: 1740, width: 920, height: 18, background: "rgba(255,255,255,0.15)", borderRadius: 9 } },
-    h("div", { style: { width: clamp(props.t / DATA.duration) * 920, height: 18, background: ACC, borderRadius: 9 } })
+function BottomAudioDock(props) {
+  const t = props.t;
+  const speaking = isSpeaking(t);
+  const pct = clamp(t / Math.max(DATA.duration, 0.1));
+  const bars = Array.from({ length: 18 }).map((_, i) => {
+    const wave = Math.abs(Math.sin(t * 13 + i * 0.7));
+    const bh = speaking ? 12 + wave * 38 : 10;
+    return h("div", {
+      key: "bar-" + i,
+      style: {
+        width: 10, height: bh, borderRadius: 6,
+        background: i % 2 === 0 ? ACC : "#ffffff",
+        opacity: speaking ? 0.9 : 0.3,
+      },
+    });
+  });
+
+  return h("div", {
+    style: {
+      position: "absolute", left: 64, right: 64, bottom: 96,
+      display: "flex", flexDirection: "column", gap: 22,
+    },
+  },
+    h("div", {
+      style: {
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "18px 28px", borderRadius: 28,
+        background: "rgba(255,255,255,0.08)", border: "1.5px solid rgba(255,255,255,0.14)",
+      },
+    },
+      h("div", {
+        style: {
+          fontSize: 24, fontWeight: 800, color: "#ffffff", letterSpacing: 1.5,
+        },
+      }, speaking ? "🎙️ AUDIO AKTIF" : "⏸️ JEDA NAPAS"),
+      h("div", {
+        style: {
+          display: "flex", alignItems: "center", gap: 8, height: 50,
+        },
+      }, bars),
+      h("div", {
+        style: {
+          fontFamily: FONT_NUM, fontSize: 26, fontWeight: 700, color: ACC,
+        },
+      }, Math.floor(t) + "s / " + Math.round(DATA.duration) + "s")
+    ),
+    h("div", {
+      style: {
+        width: "100%", height: 14, borderRadius: 999,
+        background: "rgba(255,255,255,0.16)", overflow: "hidden",
+      },
+    },
+      h("div", {
+        style: {
+          width: (pct * 100).toFixed(2) + "%", height: "100%",
+          background: "linear-gradient(90deg, " + ACC + ", #ffffff)",
+          borderRadius: 999,
+        },
+      })
+    )
   );
 }
 
 function App(props) {
-  return h("div", { style: { position: "relative", width: 1080, height: 1920, fontFamily: FONT, color: "#fff", overflow: "hidden" } },
+  return h("div", {
+    style: {
+      position: "relative", width: 1080, height: 1920,
+      fontFamily: FONT_MAIN, color: "#fff", overflow: "hidden",
+    },
+  },
     h(Background, { t: props.t }),
-    h(Title, { t: props.t }),
-    h(ChunkCard, { t: props.t }),
-    h(Progress, { t: props.t })
+    h(Header, { t: props.t }),
+    h(VisualFocusCard, { t: props.t }),
+    h(KaraokeCard, { t: props.t }),
+    h(BottomAudioDock, { t: props.t })
   );
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-// Bot memanggil draw(t) tiap frame; flushSync memastikan React selesai merender sebelum di-screenshot.
 function draw(t) {
   ReactDOM.flushSync(function () { root.render(h(App, { t: t })); });
 }
 </script></body></html>"""
 
+ORDINAL_MAP = {
+    "pertama": 1,
+    "kedua": 2,
+    "ketiga": 3,
+    "keempat": 4,
+    "kelima": 5,
+    "keenam": 6,
+    "ketujuh": 7,
+    "kedelapan": 8,
+}
 
-def make_page(title: str, words: list, duration: float, label: str = None) -> str:
+
+def _detect_svg_kind(text: str) -> tuple[str, str]:
+    """Pilih ikon vektor SVG dan label kategori mikro berdasarkan kata kunci kalimat."""
+    low = text.lower()
+    if any(k in low for k in ("oli", "pelumas", "solar", "bahan bakar", "air", "cairan")):
+        return "drop", "SISTEM FLUIDA & PELUMASAN"
+    if any(k in low for k in ("suhu", "panas", "radiator", "pendingin", "dingin")):
+        return "temp", "KONTROL SUHU MESIN"
+    if any(k in low for k in ("filter", "bersih", "kotoran", "lindungi", "lindung", "aman", "cegah")):
+        return "shield", "PROTEKSI KOMPONEN"
+    if any(k in low for k in ("pengemudi", "akselerasi", "putaran", "kecepatan", "tanjakan", "mengemudi")):
+        return "speed", "TEKNIK OPERASIONAL"
+    if any(k in low for k in ("biaya", "hemat", "persen", "ekonomi", "operasional", "efisien")):
+        return "chart", "EFISIENSI & PERFORMA"
+    if any(k in low for k in ("menit", "jam", "hari", "waktu", "jadwal", "berkala", "rutin")):
+        return "clock", "DISIPLIN WAKTU & JADWAL"
+    if any(k in low for k in ("mesin", "injektor", "katup", "komponen", "armada", "bus", "truk")):
+        return "gear", "MEKANIKAL ARMADA"
+    return "spark", "POIN INTI PEMBAHASAN"
+
+
+def _make_concise_summary(body: str) -> str:
+    """Ambil frasa inti 4-6 kata sebelum tanda koma atau kata sambung agar ringkas & tidak mengulang karaoke."""
+    clause = re.split(r"[,;:]|(?:agar|supaya|sebelum|karena|sehingga|yang|tanpa|dengan)", body, maxsplit=1)[0]
+    words = [w.strip(".,!?;:") for w in clause.split() if w.strip(".,!?;:")]
+    if len(words) < 3:
+        words = [w.strip(".,!?;:") for w in body.split() if w.strip(".,!?;:")][:6]
+    else:
+        words = words[:6]
+    phrase = " ".join(words)
+    return phrase[0].upper() + phrase[1:] if phrase else body[:40]
+
+
+def _extract_sentence_visual(sentence: str, idx: int, total: int, step_counter: list) -> dict:
+    """Bangun kartu visual dengan penomoran poin akurat, ikon SVG tematik, dan ringkasan inti."""
+    clean = " ".join(sentence.strip().split())
+    m_num = re.search(
+        r"([0-9]+(?:[.,][0-9]+)?\s?(?:%|persen|juta|miliar|triliun|km|tahun|bulan|hari|jam|menit|detik|kali))",
+        clean,
+        re.I,
+    )
+    m_ord = re.match(
+        r"^(Pertama|Kedua|Ketiga|Keempat|Kelima|Keenam|Ketujuh|Kedelapan|Terakhir)[,:]?\s*(.+)$",
+        clean,
+        re.I,
+    )
+
+    if idx == 0:
+        badge = "PEMBUKA • HOOK"
+    elif idx == total - 1 and total > 1 and not m_ord:
+        badge = "KESIMPULAN UTAMA"
+    elif m_ord:
+        word_ord = m_ord.group(1).lower()
+        if word_ord in ORDINAL_MAP:
+            step_num = ORDINAL_MAP[word_ord]
+            step_counter[0] = step_num
+        else:
+            step_counter[0] += 1
+            step_num = step_counter[0]
+        badge = f"POIN {step_num:02d} • {m_ord.group(1).upper()}"
+    elif m_num:
+        badge = "DATA & FAKTA KUNCI"
+    else:
+        badge = f"SOROTAN #{idx + 1}"
+
+    body = m_ord.group(2).strip() if m_ord else clean
+    svg_kind, tag_line = _detect_svg_kind(clean)
+    summary = _make_concise_summary(body)
+
+    return {
+        "badge": badge,
+        "svgKind": svg_kind,
+        "stat": m_num.group(1).upper() if m_num else "",
+        "summary": summary,
+        "tagLine": tag_line,
+    }
+
+
+def make_page(title: str, words: list, duration: float, label: str = None, sentences_meta: list = None) -> str:
     palette = PALETTES[sum(ord(c) for c in title) % len(PALETTES)]
     data = {
         "title": title,
@@ -162,9 +573,25 @@ def make_page(title: str, words: list, duration: float, label: str = None) -> st
         "palette": list(palette),
         "duration": round(duration, 3),
         "words": words,
+        "sentences": sentences_meta or [],
     }
-    blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    blob = json.dumps(data, ensure_ascii=False).replace("</", "<\/")
     return PAGE.replace("__DATA__", blob)
+
+
+def _make_voice_with_retry(sentences: list, workdir: Path, retries: int = 4, delay: float = 2.5):
+    """Panggil AS.make_voice dengan auto-retry saat koneksi TTS terputus (ConnectionResetError / timeout)."""
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return AS.make_voice(sentences, workdir)
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                wait_s = delay * attempt
+                print(f"[!] Koneksi TTS terputus ({e}). Mencoba ulang ({attempt}/{retries - 1}) dalam {wait_s:.1f}s...")
+                time.sleep(wait_s)
+    raise last_err
 
 
 def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
@@ -174,13 +601,24 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
         raise ValueError("Naskah kosong.")
 
     print(f"• Membuat suara dan waktu kata ({tts_provider.label()})...")
-    audio_paths, all_marks = AS.make_voice(sentences, workdir)
+    audio_paths, all_marks = _make_voice_with_retry(sentences, workdir)
     clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(clips)
     total = min(voice.duration + 0.5, MAX_SECONDS)
 
-    words, t0 = [], 0.0
-    for sentence, ac, marks in zip(sentences, clips, all_marks):
+    words, sentences_meta, t0 = [], [], 0.0
+    total_sent = len(sentences)
+    step_counter = [0]
+    for idx, (sentence, ac, marks) in enumerate(zip(sentences, clips, all_marks)):
+        s_start = round(t0, 3)
+        s_end = round(t0 + ac.duration, 3)
+        vis = _extract_sentence_visual(sentence, idx, total_sent, step_counter)
+        sentences_meta.append({
+            "start": s_start,
+            "end": s_end,
+            "text": sentence,
+            **vis,
+        })
         for w, a, b in AS.word_timings(sentence, marks, ac.duration):
             words.append({"w": w, "s": round(t0 + a, 3), "e": round(t0 + b, 3)})
         t0 += ac.duration
@@ -192,10 +630,11 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
             audio = CompositeAudioClip([voice, AS.make_music(total)])
         except Exception as e:
             print(f"[!] Musik dilewati: {e}")
-    mix = workdir / "mix.wav"
-    audio.write_audiofile(str(mix), fps=44100, logger=None)
 
-    html = make_page(item["title"], words, total, item.get("label"))
+    mix = workdir / "mix.wav"
+    audio.set_duration(total).write_audiofile(str(mix), fps=44100, logger=None)
+
+    html = make_page(item["title"], words, total, item.get("label"), sentences_meta=sentences_meta)
     out = js_video.render_html_to_mp4(html, total, mix, out_path, workdir)
     safe_export(item["title"], sentences, [c.duration for c in clips], all_marks, total, out)
     return out
