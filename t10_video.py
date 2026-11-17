@@ -81,6 +81,61 @@ def _build_narration_from_k(k: dict) -> str:
     return " ".join(p.strip() for p in parts if p.strip())
 
 
+def _auto_build_k_from_plain_text(raw_text: str, narration_override: str = None) -> dict:
+    """Konversi naskah teks biasa (paragraf / judul + isi) menjadi konfigurasi kartu T10 otomatis."""
+    title = None
+    body_lines = []
+    for line in raw_text.splitlines():
+        m_title = re.match(r"^\s*(?:judul|title)\s*:\s*(.+)$", line, re.I)
+        if m_title and not title:
+            title = m_title.group(1).strip()
+        else:
+            body_lines.append(line.strip())
+
+    clean_body = " ".join(l for l in body_lines if l).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_body) if s.strip()]
+    k = json.loads(json.dumps(DEFAULT_K))
+
+    # Ambil kata kunci dari judul atau kalimat pertama untuk pembuka & penutup
+    topic_words = re.findall(r"[A-Za-zÀ-ÿ0-9]+", (title or (sentences[0] if sentences else "FOKUS")))
+    key_label = (topic_words[-1] if topic_words else "FOKUS").upper()[:14]
+    first_words = [w.upper() for w in topic_words[:2]]
+    if len(first_words) >= 2:
+        k["pembuka"]["depan"] = first_words[0]
+        k["pembuka"]["redup"] = first_words[1]
+    k["pembuka"]["label"] = key_label
+
+    if sentences:
+        s0_words = sentences[0].rstrip(".!?").split()
+        k["lelah"]["kata"] = (s0_words[0].capitalize() + ".") if s0_words else "Penting."
+        k["lelah"]["kecil"] = " ".join(s0_words[1:6]) if len(s0_words) > 1 else "Simak poin utamanya."
+
+    # Isi 4 kartu dari kalimat-kalimat tengah
+    emojis = ["💡", "⚙️", "🔥", "🚀"]
+    mid_sentences = sentences[1:5] if len(sentences) > 1 else sentences
+    cards = []
+    for idx in range(4):
+        src = mid_sentences[idx % len(mid_sentences)] if mid_sentences else "Fokus pada proses"
+        w_list = [w.strip(".,!?;:") for w in src.split() if w.strip(".,!?;:")]
+        line1 = " ".join(w_list[:2]) if w_list else "Langkah"
+        line2 = " ".join(w_list[2:4]) if len(w_list) > 2 else "penting"
+        cards.append([emojis[idx], f"{line1}\n{line2}"])
+    k["kartu"] = cards
+
+    k["pelan"]["depan"] = "Kunci utama"
+    k["pelan"]["emas"] = key_label
+    k["pelan"]["bawah"] = "lakukan secara konsisten"
+
+    if len(sentences) >= 2:
+        last_words = [w.strip(".,!?;:").upper() for w in sentences[-1].split() if w.strip(".,!?;:")]
+        if len(last_words) >= 2:
+            k["penutup"]["atas"] = " ".join(last_words[-4:-1]) or "KUNCI UNTUK"
+            k["penutup"]["besar"] = last_words[-1][:12]
+
+    k["narration"] = narration_override or clean_body or _build_narration_from_k(k)
+    return k
+
+
 def parse_t10_input(raw_text: str) -> dict:
     """
     Mendukung 2 format input:
@@ -144,9 +199,8 @@ def parse_t10_input(raw_text: str) -> dict:
             if len(parts) > 6:
                 k["penutup"]["besar"] = parts[6]
         else:
-            raise ValueError(
-                "Format teks T10 minimal berisi 2 bagian yang dipisah tanda '|'. Ketik /t10help untuk contoh."
-            )
+            # Otomatis konversi teks biasa / naskah paragraf menjadi struktur T10
+            k = _auto_build_k_from_plain_text(body, narration_override=narration)
 
     k["gambar"] = {
         "mahkota": _img_to_data_uri("mahkota.png"),
