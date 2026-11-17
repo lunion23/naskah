@@ -38,7 +38,7 @@ RATE = os.getenv("RATE", "+8%")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 MUSIC = os.getenv("MUSIC", "1") != "0"
-MUSIC_VOLUME = float(os.getenv("MUSIC_VOLUME", "0.12"))
+MUSIC_VOLUME = float(os.getenv("MUSIC_VOLUME", "0.22"))
 MUSIC_DIR = Path("music")
 FONT_SIZE = 78
 SUB_Y = 1150            # posisi vertikal subtitle
@@ -324,15 +324,9 @@ def music_input(total: float, workdir: Path):
     """Daftar argumen -i untuk musik, atau None bila dimatikan."""
     if not MUSIC:
         return None
-    files = []
-    if MUSIC_DIR.exists():
-        for ext in ("*.mp3", "*.wav", "*.m4a", "*.ogg"):
-            files += list(MUSIC_DIR.glob(ext))
-    if files:
-        return ["-stream_loop", "-1", "-i", str(random.choice(files))]
-    pad = workdir / "pad.wav"
-    synth_pad(total, pad)
-    return ["-i", str(pad)]
+    from bgm_generator import get_bgm_path
+    bg = get_bgm_path(workdir, duration=total, style="upbeat")
+    return ["-stream_loop", "-1", "-i", str(bg)]
 
 
 # ---------------- 5. RAKIT ----------------
@@ -378,7 +372,7 @@ def build_video(item: dict, index: int) -> Path:
         cmd += music
         flt += ["[2:a]apad[va]",
                 f"[3:a]volume={MUSIC_VOLUME},afade=t=in:st=0:d=1,afade=t=out:st={max(total - 1.5, 0):.2f}:d=1.5[ma]",
-                "[va][ma]amix=inputs=2:duration=first,volume=2[a]"]
+                "[va][ma]amix=inputs=2:duration=first:normalize=0[a]"]
     else:
         flt += ["[2:a]apad[a]"]
     out = OUT_DIR / f"{slug}.mp4"

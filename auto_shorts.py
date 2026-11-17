@@ -71,7 +71,7 @@ COLOR_ACTIVE = (255, 214, 10, 255)   # kuning untuk kata yang sedang diucapkan
 COLOR_NORMAL = (255, 255, 255, 255)  # putih untuk kata lainnya
 POP_EFFECT = True               # teks "membal" sebentar setiap potongan kata baru muncul
 MUSIC = True                    # musik latar tipis di bawah suara
-MUSIC_VOLUME = 0.12             # 0.0 - 1.0 (lebih kecil = lebih pelan)
+MUSIC_VOLUME = 0.22             # 0.0 - 1.0 (lebih kecil = lebih pelan)
 MUSIC_DIR = Path("music")       # taruh file .mp3/.wav bebas hak cipta di sini; jika kosong dibuat musik ambient otomatis
 FONT_CANDIDATES = [
     os.getenv("FONT_PATH", ""),
@@ -371,19 +371,14 @@ def ambient_pad_array(duration: float, sr: int = 44100) -> np.ndarray:
 
 
 def make_music(duration: float):
-    files = []
-    if MUSIC_DIR.exists():
-        for ext in ("*.mp3", "*.wav", "*.m4a", "*.ogg"):
-            files += list(MUSIC_DIR.glob(ext))
-    if files:
-        src = AudioFileClip(str(random.choice(files)))
-        clip = src.subclip(0, duration) if src.duration >= duration else src.fx(afx.audio_loop, duration=duration)
-    else:
-        clip = AudioArrayClip(ambient_pad_array(duration), fps=44100)
+    from bgm_generator import get_bgm_path
+    bgm_file = get_bgm_path(Path("cache"), duration=duration, style="upbeat")
+    src = AudioFileClip(str(bgm_file))
+    clip = src.subclip(0, duration) if src.duration >= duration else src.fx(afx.audio_loop, duration=duration)
     return (
         clip.fx(afx.volumex, MUSIC_VOLUME)
-        .fx(afx.audio_fadein, 1.0)
-        .fx(afx.audio_fadeout, 1.5)
+        .fx(afx.audio_fadein, 0.8)
+        .fx(afx.audio_fadeout, 1.2)
     )
 
 

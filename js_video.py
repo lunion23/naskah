@@ -305,17 +305,9 @@ def _generate_ambient_wav(path: Path, duration: float = 16.0, sr: int = 22050) -
     return path
 
 
-def _pick_or_make_bgm(workdir: Path, bgm_path: Path = None) -> Path:
-    if bgm_path and Path(bgm_path).exists():
-        return Path(bgm_path)
-    music_dir = Path("music")
-    if music_dir.exists():
-        files = []
-        for ext in ("*.mp3", "*.wav", "*.m4a", "*.ogg"):
-            files.extend(music_dir.glob(ext))
-        if files:
-            return random.choice(files)
-    return _generate_ambient_wav(workdir / "ambient_bgm.wav")
+def _pick_or_make_bgm(workdir: Path, bgm_path: Path = None, duration: float = 16.0, style: str = "explainer") -> Path:
+    from bgm_generator import get_bgm_path
+    return get_bgm_path(workdir, duration=duration, style=style, custom_bgm=bgm_path)
 
 
 # ---------------- render ----------------
@@ -426,19 +418,23 @@ def encode_video(frames: Path, audio, seconds: float, out_path: Path, bgm_path: 
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "21", "-preset", "veryfast", "-r", str(FPS)]
 
     if has_audio:
-        filters = [f"[{audio_idx}:a]apad[voice]"]
+        filters = [f"[{audio_idx}:a]apad,volume=1.0[voice]"]
         mix_inputs = ["[voice]"]
         if has_bgm:
-            filters.append(f"[{bgm_idx}:a]volume=0.12[bgm]")
+            filters.append(f"[{bgm_idx}:a]volume=0.22[bgm]")
             mix_inputs.append("[bgm]")
         if has_sfx:
-            filters.append(f"[{sfx_idx}:a]volume=0.35[sfx]")
+            filters.append(f"[{sfx_idx}:a]volume=0.32[sfx]")
             mix_inputs.append("[sfx]")
         if len(mix_inputs) > 1:
-            filters.append(f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[aout]")
+            filters.append(
+                f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2:normalize=0[aout]"
+            )
             cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
         else:
             cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
+    elif has_bgm:
+        cmd += ["-map", "0:v", "-map", f"{bgm_idx}:a", "-af", "volume=0.35", "-c:a", "aac", "-b:a", "160k"]
 
     cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
     subprocess.run(cmd, check=True)
@@ -483,7 +479,8 @@ def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
 
     seconds = duration or ((audio_len + 0.6) if audio_len else DEFAULT_SECONDS)
     seconds = max(1.0, min(seconds, MAX_SECONDS))
-    return render_html_to_mp4(build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir)
+    bgm = _pick_or_make_bgm(workdir, duration=seconds, style="cinematic")
+    return render_html_to_mp4(build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir, bgm_path=bgm)
 
 
 def build_motion_video(
@@ -555,7 +552,7 @@ def build_motion_video(
         _concat_audios(ordered_audio_paths, combined_audio)
 
     sfx_track = _generate_scene_sfx_wav(workdir / "scene_sfx.wav", timed_scenes, total_seconds)
-    bgm = _pick_or_make_bgm(workdir, bgm_path=bgm_path)
+    bgm = _pick_or_make_bgm(workdir, bgm_path=bgm_path, duration=total_seconds, style="explainer")
     html = build_html(render_code, scenes=timed_scenes, subtitles=subtitles)
     res = render_html_to_mp4(
         html, total_seconds, combined_audio, out_path, workdir, bgm_path=bgm, sfx_path=sfx_track
