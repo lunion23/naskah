@@ -16,6 +16,7 @@ Peningkatan v3:
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 from moviepy.audio.AudioClip import CompositeAudioClip
@@ -571,6 +572,21 @@ def make_page(title: str, words: list, duration: float, label: str = None, sente
     return PAGE.replace("__DATA__", blob)
 
 
+def _make_voice_with_retry(sentences: list, workdir: Path, retries: int = 4, delay: float = 2.5):
+    """Panggil AS.make_voice dengan auto-retry saat koneksi TTS terputus (ConnectionResetError / timeout)."""
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return AS.make_voice(sentences, workdir)
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                wait_s = delay * attempt
+                print(f"[!] Koneksi TTS terputus ({e}). Mencoba ulang ({attempt}/{retries - 1}) dalam {wait_s:.1f}s...")
+                time.sleep(wait_s)
+    raise last_err
+
+
 def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
     sentences = AS.split_sentences(item["text"])
@@ -578,7 +594,7 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
         raise ValueError("Naskah kosong.")
 
     print(f"• Membuat suara dan waktu kata ({tts_provider.label()})...")
-    audio_paths, all_marks = AS.make_voice(sentences, workdir)
+    audio_paths, all_marks = _make_voice_with_retry(sentences, workdir)
     clips = [AudioFileClip(str(p)) for p in audio_paths]
     voice = concatenate_audioclips(clips)
     total = min(voice.duration + 0.5, MAX_SECONDS)
