@@ -1,236 +1,348 @@
-"""
-Penyedia suara terpusat untuk semua pembuat video: ElevenLabs (utama) atau Edge TTS (cadangan).
-Tanpa dependensi luar untuk ElevenLabs (hanya pustaka standar Python).
-
-Pemilihan penyedia:
-  - TTS_PROVIDER=elevenlabs | edge   (paksa salah satu)
-  - kosong: pakai ElevenLabs jika ELEVENLABS_API_KEY terisi, selain itu Edge TTS.
-
-Pengaturan ElevenLabs (environment variable):
-  ELEVENLABS_API_KEY    kunci API (wajib)
-  ELEVENLABS_VOICE_ID   ID suara dari akun kamu (bawaan: 21m00Tcm4TlvDq8ikWAM)
-  ELEVENLABS_MODEL      bawaan eleven_multilingual_v2 (kualitas terbaik); eleven_flash_v2_5 lebih murah
-  ELEVENLABS_SPEED      0.7 - 1.2, bawaan 1.0
-  ELEVENLABS_STABILITY  0 - 1, bawaan 0.5
-  ELEVENLABS_SIMILARITY 0 - 1, bawaan 0.75
-  ELEVENLABS_FORMAT     bawaan mp3_44100_128
-  TTS_FALLBACK          1 (bawaan) = bila ElevenLabs ditolak (kunci/kuota/suara/paket), seluruh video dibuat
-                        dengan Edge TTS dan bot memberi tahu; 0 = tampilkan error saja
-
-synthesize() menulis file suara dan mengembalikan waktu tiap kata [(mulai, selesai), ...] dalam detik
-(kosong bila tidak tersedia; pembuat video lalu memperkirakan sendiri).
-"""
-
 import asyncio
-import base64
 import json
 import os
-import time
+import re
+import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-FALLBACK_CODES = (401, 402, 404, 422)   # kode ElevenLabs yang memicu cadangan Edge TTS
-_notes = []                              # pesan untuk pengguna (dibaca bot lewat take_notes)
-DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
-DEFAULT_MODEL = "eleven_multilingual_v2"
-API_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
-
-HINTS = {
-    401: "API key tidak valid, atau kuota karakter habis.",
-    402: "Paket ElevenLabs kamu belum mengizinkan fitur/suara ini (mis. suara dari Voice Library butuh paket berbayar).",
-    404: "Voice ID tidak ditemukan di akun kamu.",
-    422: "Parameter ditolak (cek ELEVENLABS_VOICE_ID dan ELEVENLABS_MODEL).",
-    429: "Terlalu banyak permintaan sekaligus (batas konkurensi paket).",
-}
-
-
-class ElevenLabsError(RuntimeError):
-    def __init__(self, code, message):
-        super().__init__(message)
-        self.code = code
-
-
-def provider() -> str:
-    p = os.getenv("TTS_PROVIDER", "").strip().lower()
-    if p in ("edge", "elevenlabs"):
-        return p
-    return "elevenlabs" if os.getenv("ELEVENLABS_API_KEY", "").strip() else "edge"
-
-
-def label() -> str:
-    if provider() == "elevenlabs":
-        return f"ElevenLabs, model {os.getenv('ELEVENLABS_MODEL', '').strip() or DEFAULT_MODEL}"
-    return "Edge TTS"
-
-
-def _float_env(name, default):
-    try:
-        return float(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
-
-
-# ---------------- ElevenLabs ----------------
-def words_from_alignment(text: str, alignment) -> list:
-    """Ubah waktu per karakter jadi waktu per kata [(mulai, selesai)], urut seperti text.split()."""
-    if not alignment:
-        return []
-    chars = alignment.get("characters") or []
-    starts = alignment.get("character_start_times_seconds") or []
-    ends = alignment.get("character_end_times_seconds") or []
-    if not chars or not (len(chars) == len(starts) == len(ends)):
-        return []
-    marks, cur_s, cur_e = [], None, None
-    for ch, a, b in zip(chars, starts, ends):
-        if ch.isspace():
-            if cur_s is not None:
-                marks.append((float(cur_s), float(cur_e)))
-                cur_s = None
-        else:
-            if cur_s is None:
-                cur_s = a
-            cur_e = b
-    if cur_s is not None:
-        marks.append((float(cur_s), float(cur_e)))
-    return marks if len(marks) == len(text.split()) else []
-
-
-def _error_message(e: urllib.error.HTTPError) -> str:
-    try:
-        raw = json.loads(e.read().decode("utf-8", "replace"))
-        detail = raw.get("detail", raw)
-        if isinstance(detail, dict):
-            msg = detail.get("message") or detail.get("status") or json.dumps(detail)
-        elif isinstance(detail, list) and detail:
-            msg = "; ".join(str(d.get("msg", d)) for d in detail[:2])
-        else:
-            msg = str(detail)
-    except Exception:
-        msg = e.reason if hasattr(e, "reason") else ""
-    hint = HINTS.get(e.code, "")
-    return f"ElevenLabs error {e.code}: {msg}" + (f" ({hint})" if hint else "")
-
-
-def _post(url: str, body: dict, key: str, retries: int = 3) -> dict:
-    data = json.dumps(body).encode("utf-8")
-    for attempt in range(retries + 1):
-        req = urllib.request.Request(
-            url, data=data, method="POST",
-            headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.load(r)
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504) and attempt < retries:
-                time.sleep(2 * (attempt + 1))
-                continue
-            raise ElevenLabsError(e.code, _error_message(e))
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt < retries:
-                time.sleep(2 * (attempt + 1))
-                continue
-            raise RuntimeError(f"Tidak bisa menghubungi ElevenLabs: {e}")
-    raise RuntimeError("ElevenLabs tidak merespons.")
-
-
-def _eleven(text: str, path: Path, previous_text=None, next_text=None) -> list:
-    key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("ELEVENLABS_API_KEY belum diisi.")
-    voice = os.getenv("ELEVENLABS_VOICE_ID", "").strip() or DEFAULT_VOICE_ID
-    model = os.getenv("ELEVENLABS_MODEL", "").strip() or DEFAULT_MODEL
-    fmt = os.getenv("ELEVENLABS_FORMAT", "").strip() or "mp3_44100_128"
-    settings = {
-        "stability": _float_env("ELEVENLABS_STABILITY", 0.5),
-        "similarity_boost": _float_env("ELEVENLABS_SIMILARITY", 0.75),
-    }
-    speed = _float_env("ELEVENLABS_SPEED", 1.0)
-    if abs(speed - 1.0) > 1e-6:
-        settings["speed"] = min(max(speed, 0.7), 1.2)
-
-    body = {"text": text, "model_id": model, "voice_settings": settings}
-    url = f"{API_BASE}/{voice}/with-timestamps?output_format={fmt}"
-    with_context = dict(body)
-    if previous_text:
-        with_context["previous_text"] = previous_text
-    if next_text:
-        with_context["next_text"] = next_text   # membantu intonasi antarkalimat agar menyambung
-    try:
-        resp = _post(url, with_context, key)
-    except ElevenLabsError as e:
-        if e.code == 422 and with_context != body:
-            resp = _post(url, body, key)       # beberapa model menolak previous/next_text
-        else:
-            raise
-    audio = resp.get("audio_base64")
-    if not audio:
-        raise RuntimeError("ElevenLabs tidak mengembalikan audio.")
-    Path(path).write_bytes(base64.b64decode(audio))
-    return words_from_alignment(text, resp.get("alignment"))
-
-
-# ---------------- Edge TTS (cadangan) ----------------
-async def _edge_async(text, path, voice, rate):
+try:
     import edge_tts
+except ImportError:
+    edge_tts = None
 
+
+# Status fallback per sesi render agar tidak mengulang request ke ElevenLabs
+# jika kuota sudah terdeteksi habis (401/402/429) dalam satu video.
+_ELEVENLABS_DISABLED_SESSION = False
+_LAST_PROVIDER_USED = "edge"
+_FALLBACK_REASON = ""
+
+
+def reset_tts_session():
+    """Panggil di awal render video baru jika ingin mencoba ElevenLabs lagi."""
+    global _ELEVENLABS_DISABLED_SESSION, _FALLBACK_REASON
+    _ELEVENLABS_DISABLED_SESSION = False
+    _FALLBACK_REASON = ""
+
+
+def get_tts_status() -> dict:
+    """Mengembalikan info provider terakhir yang dipakai (untuk log/caption Telegram)."""
+    return {
+        "provider": _LAST_PROVIDER_USED,
+        "fallback_active": _ELEVENLABS_DISABLED_SESSION,
+        "reason": _FALLBACK_REASON,
+    }
+
+
+def _get_audio_duration(audio_path: str) -> float:
+    """Mengukur durasi audio (detik) secara akurat memakai ffprobe."""
     try:
-        comm = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
-    except TypeError:  # edge-tts versi lama
-        comm = edge_tts.Communicate(text, voice, rate=rate)
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
+        ]
+        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
+        dur = float(out)
+        if dur > 0:
+            return dur
+    except Exception:
+        pass
+
+    # Estimasi cadangan jika ffprobe tidak tersedia
+    try:
+        size_bytes = os.path.getsize(audio_path)
+        return max(0.5, size_bytes / 16000.0)
+    except Exception:
+        return 1.0
+
+
+def _proportional_marks(text: str, total_duration: float) -> list[dict]:
+    """Menghitung timestamp per kata secara proporsional untuk subtitle karaoke."""
+    words = [w for w in re.split(r"\s+", text.strip()) if w]
+    if not words:
+        return []
+
+    weights = [max(1, len(re.sub(r"[^\w]", "", w))) for w in words]
+    total_weight = sum(weights) or len(words)
+
     marks = []
-    with open(path, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                a = chunk["offset"] / 1e7
-                marks.append((a, a + chunk["duration"] / 1e7))
+    cursor = 0.0
+    for w, weight in zip(words, weights):
+        seg_dur = (weight / total_weight) * total_duration
+        marks.append(
+            {
+                "word": w,
+                "start": round(cursor, 3),
+                "end": round(cursor + seg_dur, 3),
+            }
+        )
+        cursor += seg_dur
+
+    if marks:
+        marks[-1]["end"] = round(total_duration, 3)
     return marks
 
 
-# ---------------- antarmuka ----------------
-def synthesize(text, path, previous_text=None, next_text=None, edge_voice=None, edge_rate=None) -> list:
-    """Tulis suara ke `path` (mp3) dan kembalikan waktu tiap kata (bisa kosong)."""
-    path = Path(path)
-    if provider() == "elevenlabs":
-        return _eleven(text, path, previous_text, next_text)
-    voice = edge_voice or os.getenv("EDGE_VOICE") or os.getenv("VOICE") or "id-ID-ArdiNeural"
-    rate = edge_rate or os.getenv("EDGE_RATE") or os.getenv("RATE") or "+8%"
-    return asyncio.run(_edge_async(text, path, voice, rate))
+def _elevenlabs_tts(
+    text: str,
+    out_path: str,
+    voice_id: str | None = None,
+    model_id: str | None = None,
+) -> tuple[str, list[dict]]:
+    """Sintesis suara memakai ElevenLabs REST API (tanpa bergantung versi SDK)."""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("ELEVENLABS_API_KEY kosong atau belum diatur.")
 
+    vid = (
+        voice_id
+        or os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+        or "pNInz6obpgDQGcFmaJgB"  # Adam (pre-made voice aman untuk akun gratis)
+    )
+    mid = (
+        model_id
+        or os.getenv("ELEVENLABS_MODEL_ID", "").strip()
+        or "eleven_multilingual_v2"
+    )
 
-def take_notes() -> list:
-    """Ambil (dan kosongkan) catatan, mis. pemberitahuan bahwa video memakai suara cadangan."""
-    out = list(_notes)
-    _notes.clear()
-    return out
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{vid}"
+    payload = json.dumps(
+        {
+            "text": text,
+            "model_id": mid,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+            },
+        }
+    ).encode("utf-8")
 
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        method="POST",
+    )
 
-def _fallback_enabled() -> bool:
-    return os.getenv("TTS_FALLBACK", "1").strip() != "0"
-
-
-def synthesize_many(sentences, paths, edge_voice=None, edge_rate=None) -> list:
-    """Suara untuk satu video (banyak kalimat). Mengembalikan daftar waktu kata per kalimat.
-    Satu video selalu memakai satu penyedia: bila ElevenLabs ditolak, SEMUA kalimat dibuat ulang dengan Edge TTS."""
-    if provider() == "elevenlabs":
-        try:
-            marks = []
-            for i, (text, path) in enumerate(zip(sentences, paths)):
-                prev = sentences[i - 1] if i > 0 else None
-                nxt = sentences[i + 1] if i + 1 < len(sentences) else None
-                marks.append(_eleven(text, Path(path), prev, nxt))
-            return marks
-        except ElevenLabsError as e:
-            if not _fallback_enabled() or e.code not in FALLBACK_CODES:
-                raise
-            _notes.append(f"ElevenLabs ditolak ({e}). Video ini dibuat dengan suara Edge TTS. "
-                          "Perbaiki ELEVENLABS_VOICE_ID/paket, atau hapus ELEVENLABS_API_KEY untuk memakai Edge TTS terus.")
-    voice = edge_voice or os.getenv("EDGE_VOICE") or os.getenv("VOICE") or "id-ID-ArdiNeural"
-    rate = edge_rate or os.getenv("EDGE_RATE") or os.getenv("RATE") or "+8%"
     try:
-        return [asyncio.run(_edge_async(t, Path(p), voice, rate)) for t, p in zip(sentences, paths)]
-    except ImportError:
-        raise RuntimeError("Suara cadangan Edge TTS tidak tersedia karena paket edge-tts belum terpasang.")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            audio_bytes = resp.read()
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+        raise RuntimeError(f"ElevenLabs error {e.code}: {err_body}") from e
+    except Exception as e:
+        raise RuntimeError(f"ElevenLabs connection error: {e}") from e
+
+    if not audio_bytes or len(audio_bytes) < 256:
+        raise RuntimeError("ElevenLabs mengembalikan file audio kosong.")
+
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "wb") as f:
+        f.write(audio_bytes)
+
+    duration = _get_audio_duration(out_path)
+    marks = _proportional_marks(text, duration)
+    return str(out_path), marks
+
+
+async def _edge_tts_async(
+    text: str,
+    out_path: str,
+    voice: str,
+    rate: str,
+    pitch: str = "+0Hz",
+) -> list[dict]:
+    if edge_tts is None:
+        raise RuntimeError("Pustaka edge-tts belum terinstal (pip install edge-tts).")
+
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+
+    marks = []
+    audio_chunks = bytearray()
+
+    async for chunk in communicate.stream():
+        ctype = chunk.get("type")
+        if ctype == "audio":
+            audio_chunks.extend(chunk["data"])
+        elif ctype == "WordBoundary":
+            offset_sec = chunk["offset"] / 10_000_000.0
+            dur_sec = chunk["duration"] / 10_000_000.0
+            marks.append(
+                {
+                    "word": chunk["text"],
+                    "start": round(offset_sec, 3),
+                    "end": round(offset_sec + dur_sec, 3),
+                }
+            )
+
+    with open(out_path, "wb") as f:
+        f.write(audio_chunks)
+
+    return marks
+
+
+def _edge_tts(
+    text: str,
+    out_path: str,
+    voice: str | None = None,
+    rate: str | None = None,
+    pitch: str = "+0Hz",
+) -> tuple[str, list[dict]]:
+    """Sintesis suara memakai Microsoft Edge TTS (gratis, tanpa batas kuota)."""
+    selected_voice = (
+        voice
+        or os.getenv("EDGE_VOICE", "").strip()
+        or os.getenv("VOICE", "").strip()
+        or "id-ID-ArdiNeural"
+    )
+    # Jika variabel VOICE berisi ID ElevenLabs (bukan format id-ID-...), pakai default ArdiNeural
+    if not re.match(r"^[a-z]{2}-[A-Z]{2}-", selected_voice):
+        selected_voice = "id-ID-ArdiNeural"
+
+    selected_rate = rate or os.getenv("EDGE_RATE", "").strip() or os.getenv("RATE", "").strip() or "+0%"
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Aman jika dipanggil dari dalam event loop async (seperti python-telegram-bot / aiogram)
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            marks = pool.submit(
+                asyncio.run,
+                _edge_tts_async(text, out_path, selected_voice, selected_rate, pitch),
+            ).result()
+    else:
+        marks = asyncio.run(
+            _edge_tts_async(text, out_path, selected_voice, selected_rate, pitch)
+        )
+
+    duration = _get_audio_duration(out_path)
+    if not marks:
+        marks = _proportional_marks(text, duration)
+
+    return str(out_path), marks
+
+
+def make_voice(
+    text: str,
+    out_path: str,
+    voice: str | None = None,
+    rate: str | None = None,
+    provider: str | None = None,
+    pitch: str = "+0Hz",
+) -> tuple[str, list[dict]]:
+    """
+    Fungsi utama pembuat suara dengan AUTO-FALLBACK otomatis:
+    Jika provider = elevenlabs lalu gagal (error 401/402/429/kuota habis/timeout),
+    otomatis beralih ke edge-tts tanpa menghentikan render video.
+    """
+    global _ELEVENLABS_DISABLED_SESSION, _LAST_PROVIDER_USED, _FALLBACK_REASON
+
+    clean_text = (text or "").strip()
+    if not clean_text:
+        raise ValueError("Teks narasi kosong.")
+
+    chosen = (
+        provider
+        or os.getenv("TTS_PROVIDER", "elevenlabs")
+    ).strip().lower()
+
+    use_eleven = chosen in ("elevenlabs", "eleven", "11labs")
+
+    if use_eleven and not _ELEVENLABS_DISABLED_SESSION:
+        try:
+            audio_file, marks = _elevenlabs_tts(
+                text=clean_text,
+                out_path=out_path,
+                voice_id=voice,
+            )
+            _LAST_PROVIDER_USED = "elevenlabs"
+            return audio_file, marks
+        except Exception as err:
+            err_msg = str(err)
+            print(f"[TTS AUTO-FALLBACK] ElevenLabs gagal ({err_msg}) -> Beralih ke Edge TTS...")
+            # Nonaktifkan ElevenLabs untuk sisa kalimat di video ini jika error kuota/auth
+            if any(code in err_msg for code in ("401", "402", "429", "quota", "API_KEY")):
+                _ELEVENLABS_DISABLED_SESSION = True
+                _FALLBACK_REASON = err_msg
+
+    # Jalankan Edge TTS (sebagai provider utama maupun fallback otomatis)
+    audio_file, marks = _edge_tts(
+        text=clean_text,
+        out_path=out_path,
+        voice=voice,
+        rate=rate,
+        pitch=pitch,
+    )
+    _LAST_PROVIDER_USED = "edge"
+    return audio_file, marks
+
+
+def synthesize_many(
+    items: list,
+    out_dir: str,
+    prefix: str = "seg",
+    voice: str | None = None,
+    rate: str | None = None,
+    provider: str | None = None,
+) -> list[dict]:
+    """
+    Memproses banyak segmen narasi sekaligus dengan auto-fallback.
+    Mendukung input berupa list[str] maupun list[dict] (dengan key 'text' atau 'narasi').
+    """
+    reset_tts_session()
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    results = []
+
+    for idx, item in enumerate(items, start=1):
+        if isinstance(item, dict):
+            text = item.get("text") or item.get("narasi") or item.get("teks") or ""
+            item_voice = item.get("voice") or voice
+            item_rate = item.get("rate") or rate
+        else:
+            text = str(item)
+            item_voice = voice
+            item_rate = rate
+
+        out_file = str(Path(out_dir) / f"{prefix}_{idx:02d}.mp3")
+        audio_path, marks = make_voice(
+            text=text,
+            out_path=out_file,
+            voice=item_voice,
+            rate=item_rate,
+            provider=provider,
+        )
+        duration = _get_audio_duration(audio_path)
+        results.append(
+            {
+                "index": idx,
+                "text": text,
+                "audio_path": audio_path,
+                "duration": duration,
+                "marks": marks,
+                "provider": _LAST_PROVIDER_USED,
+            }
+        )
+
+    return results
