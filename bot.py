@@ -256,58 +256,159 @@ def _extract_key_figure(sentence: str):
 
 
 def _text_to_motion_storyboard(title: str, text: str) -> dict:
-    """Ubah naskah teks biasa menjadi storyboard multi-adegan bersih tanpa placeholder."""
+    """Ubah naskah teks biasa menjadi storyboard multi-adegan dinamis dengan variasi visual tinggi."""
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
     scenes = []
-    icons = ["💡", "📌", "🔎", "⚖️", "💰", "📈"]
+    icons = ["💡", "🚀", "🔎", "⚡", "🎯", "🔥", "📌", "🧠"]
+    themes = ["cream", "sky", "mint", "lavender", "coral"]
+    callouts = ["SIMAK INI!", "PENTING!", "FAKTA NYATA", "CATAT YA!", "KEREN KAN?"]
 
-    bright_themes = ["cream", "mint", "lavender", "coral"]
     for i, s in enumerate(sentences):
         fig = _extract_key_figure(s)
-        th = bright_themes[i % len(bright_themes)]
+        th = themes[i % len(themes)]
+        side = "center" if i == 0 or i == len(sentences) - 1 else ("right" if i % 2 == 1 else "left")
+        pct_match = re.search(r"([0-9]{1,3})\s*(?:%|persen)", s, re.I)
+
         if i == 0:
-            scenes.append({
-                "type": "big_number",
-                "theme": "cream",
-                "narration": s,
-                "data": {
-                    "headline": title.upper(),
-                    "subheadline": _smart_truncate(s, 95),
-                    "rays": True,
-                },
-            })
+            # Adegan pembuka: Chat Hook jika berupa pertanyaan, atau Big Number jika pernyataan
+            if "?" in s:
+                scenes.append({
+                    "type": "chat_hook",
+                    "theme": "cream",
+                    "narration": s,
+                    "data": {
+                        "badge": "PEMBUKA",
+                        "header": _smart_truncate(title, 34),
+                        "question": _smart_truncate(s, 95),
+                        "reply": "Yuk kita bedah faktanya bareng-bareng! 👇",
+                        "side": "center",
+                        "gesture": 0,
+                        "callout": "MULAI!",
+                    },
+                })
+            else:
+                scenes.append({
+                    "type": "big_number",
+                    "theme": "cream",
+                    "narration": s,
+                    "data": {
+                        "badge": "01 • HOOK",
+                        "pill": "TAHUKAH KAMU?",
+                        "stat": fig or _smart_truncate(title, 26),
+                        "subheadline": _smart_truncate(s, 100),
+                        "sticker": "WAJIB TAHU!",
+                        "side": "center",
+                        "gesture": 0,
+                    },
+                })
         elif i == len(sentences) - 1 and len(sentences) > 1:
             scenes.append({
                 "type": "cta_closing",
                 "theme": "coral",
                 "narration": s,
                 "data": {
-                    "headline": title.upper(),
-                    "subheadline": _smart_truncate(s, 110),
+                    "badge": "PENUTUP",
+                    "pill": "KESIMPULAN",
+                    "icon": "🔥",
+                    "headline": _smart_truncate(s, 95),
+                    "subheadline": "Tulis Pendapatmu di Kolom Komentar!",
+                    "side": "center",
+                    "gesture": 4,
+                    "callout": "MANTAP!",
                 },
             })
-        elif i % 2 == 1:
+        elif pct_match:
+            scenes.append({
+                "type": "gauge_meter",
+                "theme": "sky",
+                "narration": s,
+                "data": {
+                    "badge": f"POIN 0{i + 1}",
+                    "pill": "DATA & PERSENTASE",
+                    "percent": int(pct_match.group(1)),
+                    "sub_label": _smart_truncate(title, 24),
+                    "footer": _smart_truncate(s, 85),
+                    "side": side,
+                    "gesture": 2,
+                    "callout": callouts[i % len(callouts)],
+                },
+            })
+        elif re.search(r"\b(vs|dibanding|sebaliknya|padahal|berbeda|sedangkan|bukan)\b", s, re.I):
+            parts_vs = re.split(r"\b(?:vs|dibanding|sebaliknya|padahal|sedangkan)\b", s, maxsplit=1, flags=re.I)
+            left_txt = _smart_truncate(parts_vs[0], 55) if len(parts_vs) > 1 else "Anggapan Umum"
+            right_txt = _smart_truncate(parts_vs[1], 55) if len(parts_vs) > 1 else _smart_truncate(s, 55)
+            scenes.append({
+                "type": "comparison_vs",
+                "theme": "lavender",
+                "narration": s,
+                "data": {
+                    "badge": f"POIN 0{i + 1}",
+                    "pill": "PERBANDINGAN",
+                    "left_icon": "❌",
+                    "left_title": "SISI PERTAMA",
+                    "left_desc": left_txt,
+                    "right_icon": "✅",
+                    "right_title": "SISI FAKTA",
+                    "right_desc": right_txt,
+                    "footer": _smart_truncate(title, 48),
+                    "side": side,
+                    "gesture": 3,
+                },
+            })
+        elif i % 3 == 1:
             scenes.append({
                 "type": "statement_card",
                 "theme": th,
                 "narration": s,
                 "data": {
-                    "badge": f"FAKTA #{i}",
+                    "badge": f"POIN 0{i + 1}",
                     "icon": icons[i % len(icons)],
                     "highlight": fig or "",
-                    "body": _smart_truncate(s, 120),
+                    "body": _smart_truncate(s, 115),
+                    "footer": _smart_truncate(title, 46),
+                    "side": side,
+                    "gesture": 2,
+                    "callout": callouts[i % len(callouts)],
+                },
+            })
+        elif i % 3 == 2:
+            # Pecah kalimat menjadi 3 poin singkat untuk kartu 3 kolom
+            chunks = [c.strip() for c in re.split(r"[,;]|\bdan\b", s) if c.strip()]
+            cards_3 = []
+            for idx3 in range(3):
+                c_txt = chunks[idx3] if idx3 < len(chunks) else f"Poin Kunci #{idx3 + 1}"
+                cards_3.append({
+                    "icon": ["1️⃣", "2️⃣", "3️⃣"][idx3],
+                    "title": f"BAGIAN {idx3 + 1}",
+                    "desc": _smart_truncate(c_txt, 42),
+                })
+            scenes.append({
+                "type": "three_cards",
+                "theme": "mint",
+                "narration": s,
+                "data": {
+                    "badge": f"POIN 0{i + 1}",
+                    "pill": "3 HAL PENTING",
+                    "cards": cards_3,
+                    "footer": _smart_truncate(title, 48),
+                    "side": side,
+                    "gesture": 1,
                 },
             })
         else:
             scenes.append({
-                "type": "character_story",
+                "type": "line_chart",
                 "theme": "sky",
                 "narration": s,
                 "data": {
-                    "character": "girl" if (i // 2) % 2 == 1 else "boy",
-                    "card_value": fig or "",
-                    "quote": "" if fig else _smart_truncate(s, 95),
-                    "banner": _smart_truncate(title, 34),
+                    "badge": f"POIN 0{i + 1}",
+                    "pill": "DAMPAK & TREN",
+                    "right_label": _smart_truncate(title, 26),
+                    "top_tag": "Hasil Optimal 🚀",
+                    "bot_tag": "Cara Biasa 🐢",
+                    "footer": _smart_truncate(s, 78),
+                    "side": side,
+                    "gesture": 2,
                 },
             })
     return {"title": title, "scenes": scenes}
