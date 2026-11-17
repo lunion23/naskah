@@ -1,11 +1,4 @@
-                /**
-                 * CloudPad Note
-                 * Title: motion_renderer
-                 * Date: 2026-11-18 02:09:48
-                 * Tags: lokal, js
- */
-
-                // motion_renderer.js v15 — Mesin Infografis & Presenter Dinamis Anti-Bosan (1080x1920)
+// motion_renderer.js v15 — Mesin Infografis & Presenter Dinamis Anti-Bosan (1080x1920)
 // Fitur: Transisi Kamera Halus, 9 Tipe Infografis Kaya Visual, Stempel/Sticker Pop-up,
 //        Partikel Latar Hidup, Teleprompter Beranimasi, dan Presenter dengan Pergerakan Halus (Lerp).
 
@@ -76,7 +69,6 @@ function getSpeechEnergy(t) {
   return 0.38 + Math.abs(Math.sin(t * 14)) * 0.44 + Math.abs(Math.cos(t * 23)) * 0.22;
 }
 
-// Palet warna kaya variasi per tema agar tiap adegan terasa segar
 const THEMES = {
   cream:    { top: '#FFFBEB', mid: '#FEF3C7', bot: '#E0F2FE', accent: '#EA580C', alt: '#2563EB', dark: '#0F172A' },
   mint:     { top: '#ECFDF5', mid: '#D1FAE5', bot: '#CCFBF1', accent: '#059669', alt: '#0284C7', dark: '#064E3B' },
@@ -90,9 +82,6 @@ function getThemePalette(themeName) {
   return THEMES[themeName] || THEMES.cream;
 }
 
-// =========================================================================
-// 1. LATAR DINAMIS DENGAN PARTIKEL MENGAMBANG & GRID BERGERAK
-// =========================================================================
 function drawDynamicBackground(themeName, t, sceneIndex) {
   const pal = getThemePalette(themeName);
   const isDark = themeName === 'dark';
@@ -104,7 +93,6 @@ function drawDynamicBackground(themeName, t, sceneIndex) {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
-  // Cahaya aura radial berdenyut di belakang panel atas
   const auraR = 460 + Math.sin(t * 2.2) * 35;
   const rg = ctx.createRadialGradient(W / 2, 430, 40, W / 2, 430, auraR);
   rg.addColorStop(0, isDark ? 'rgba(249, 115, 22, 0.22)' : 'rgba(255, 255, 255, 0.85)');
@@ -112,7 +100,6 @@ function drawDynamicBackground(themeName, t, sceneIndex) {
   ctx.fillStyle = rg;
   ctx.fillRect(0, 0, W, 950);
 
-  // Grid titik bergeser pelan (parallax)
   ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.065)';
   const shiftX = (t * 14) % 64;
   const shiftY = (t * 10) % 64;
@@ -124,7 +111,6 @@ function drawDynamicBackground(themeName, t, sceneIndex) {
     }
   }
 
-  // Bentuk geometris dekoratif mengambang (lingkaran, segitiga, plus) agar latar tidak mati
   const shapes = [
     { x: 110, y: 260, r: 26, spd: 1.1, kind: 'ring' },
     { x: W - 105, y: 340, r: 22, spd: 1.4, kind: 'plus' },
@@ -157,9 +143,6 @@ function drawDynamicBackground(themeName, t, sceneIndex) {
   });
 }
 
-// =========================================================================
-// 2. HEADER ATAS + PROGRESS SEGMENT BAR
-// =========================================================================
 function drawTopHeader(data, index, pal, isDark) {
   const cat = String(window.CHANNEL_LABEL || data.channel || 'FAKTA & WAWASAN').toUpperCase();
   const badge = String(data.badge || `ADEGAN 0${index + 1}`).toUpperCase();
@@ -173,7 +156,6 @@ function drawTopHeader(data, index, pal, isDark) {
   const bw = Math.min(Math.max(ctx.measureText(badge).width + 48, 200), 420);
   const bx = W - 70 - bw, by = 58, bh = 48;
 
-  // Shadow badge
   roundRect(bx + 4, by + 5, bw, bh, 24);
   ctx.fillStyle = '#0F172A';
   ctx.fill();
@@ -190,7 +172,6 @@ function drawTopHeader(data, index, pal, isDark) {
   ctx.fillText(badge, bx + bw / 2, by + 31);
 }
 
-// Bingkai Panel Neo-Brutalist dengan Efek Pop-in & Shadow Tebal
 function drawPanelCard(x, y, w, h, radius = 26, bgFill = '#FFFFFF') {
   roundRect(x + 9, y + 11, w, h, radius);
   ctx.fillStyle = '#0F172A';
@@ -204,7 +185,6 @@ function drawPanelCard(x, y, w, h, radius = 26, bgFill = '#FFFFFF') {
   ctx.stroke();
 }
 
-// Stempel / Sticker Pop-up di Sudut Panel Atas
 function drawCornerSticker(text, x, y, angleRad, bgColor, scale = 1) {
   if (!text) return;
   ctx.save();
@@ -230,16 +210,10 @@ function drawCornerSticker(text, x, y, angleRad, bgColor, scale = 1) {
   ctx.restore();
 }
 
-// =========================================================================
-// 3. PANEL ATAS (Y: 145 .. 715, Tinggi 570px) — 9 TIPE VISUAL INFOGRAFIS
-// =========================================================================
-
-// TIPE 1: BIG NUMBER / HOOK ("big_number") — Angka / Fakta Utama Raksasa + Kilau Sinar
 function renderTopBigNumber(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28, '#FFFFFF');
 
-  // Sinar berputar lembut di belakang angka utama
   const cx = W / 2, cy = py + 235;
   ctx.save();
   ctx.translate(cx, cy);
@@ -256,7 +230,6 @@ function renderTopBigNumber(data, p, t, pal) {
   }
   ctx.restore();
 
-  // Pill kategori atas
   const pill = String(data.pill || 'FAKTA MENGEJUTKAN').toUpperCase();
   roundRect(W / 2 - 190, py + 28, 380, 44, 22);
   ctx.fillStyle = pal.accent;
@@ -266,7 +239,6 @@ function renderTopBigNumber(data, p, t, pal) {
   ctx.font = '900 22px Montserrat, sans-serif';
   ctx.fillText(pill, W / 2, py + 57);
 
-  // Angka / Kata Kunci Besar Memantul
   const pop = easeOutBack(clamp01(p * 2.8));
   const mainStat = String(data.stat || data.headline || 'TAHUKAH KAMU?').toUpperCase();
   ctx.save();
@@ -281,7 +253,6 @@ function renderTopBigNumber(data, p, t, pal) {
   }
   ctx.restore();
 
-  // Kotak kesimpulan bawah
   roundRect(px + 38, py + 412, pw - 76, 112, 18);
   ctx.fillStyle = '#FEF3C7';
   ctx.fill();
@@ -296,7 +267,6 @@ function renderTopBigNumber(data, p, t, pal) {
   drawCornerSticker(data.sticker || 'WAJIB TAHU!', px + pw - 115, py + 28, 0.14, '#FACC15', pop);
 }
 
-// TIPE 2: CHAT HOOK ("chat_hook") — Gelembung Chat Netizen vs Balasan
 function renderTopChatHook(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -310,7 +280,6 @@ function renderTopChatHook(data, p, t, pal) {
   ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(px + 32, py + 82); ctx.lineTo(px + pw - 32, py + 82); ctx.stroke();
 
-  // Bubble 1 (Kiri - Pertanyaan)
   const b1 = easeOutBack(clamp01(p * 3.5));
   ctx.save();
   ctx.translate(px + 38, py + 112);
@@ -324,7 +293,6 @@ function renderTopChatHook(data, p, t, pal) {
   drawWrappedText(data.question || 'Benarkah hal ini sering bikin orang salah paham?', 28, 56, pw - 245, 44);
   ctx.restore();
 
-  // Indikator mengetik sebelum bubble 2 muncul
   if (p > 0.18 && p <= 0.36) {
     roundRect(px + pw - 190, py + 315, 150, 64, 32);
     ctx.fillStyle = pal.alt;
@@ -338,7 +306,6 @@ function renderTopChatHook(data, p, t, pal) {
     }
   }
 
-  // Bubble 2 (Kanan - Jawaban Fakta)
   if (p > 0.34) {
     const b2 = easeOutBack(clamp01((p - 0.34) * 3.5));
     const b2w = pw - 190;
@@ -356,7 +323,6 @@ function renderTopChatHook(data, p, t, pal) {
   }
 }
 
-// TIPE 3: STATEMENT CARD ("statement_card") — Kartu Sorotan Fakta dengan Ikon Besar & Angka Highlight
 function renderTopStatementCard(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -370,7 +336,6 @@ function renderTopStatementCard(data, p, t, pal) {
   ctx.font = '900 22px Montserrat, sans-serif';
   ctx.fillText(badge, px + 174, py + 57);
 
-  // Kotak Ikon Kiri beranimasi melayang
   const floatY = Math.sin(t * 3.5) * 8;
   const pop = easeOutBack(clamp01(p * 3));
   ctx.save();
@@ -385,7 +350,6 @@ function renderTopStatementCard(data, p, t, pal) {
   ctx.fillText(data.icon || '💡', 0, 36);
   ctx.restore();
 
-  // Teks Kanan (Highlight Angka + Penjelasan)
   const textX = px + 280;
   const textMaxW = pw - 320;
   ctx.textAlign = 'left';
@@ -403,7 +367,6 @@ function renderTopStatementCard(data, p, t, pal) {
     drawWrappedText(data.body || '', textX, py + 195, textMaxW, 46);
   }
 
-  // Bar highlight bawah
   roundRect(px + 34, py + 436, pw - 68, 86, 16);
   ctx.fillStyle = '#F8FAFC';
   ctx.fill();
@@ -414,7 +377,6 @@ function renderTopStatementCard(data, p, t, pal) {
   ctx.fillText(data.footer || 'Fakta Kunci yang Perlu Diingat', W / 2, py + 488);
 }
 
-// TIPE 4: GAUGE / PERCENTAGE METER ("gauge_meter") — Meteran Persentase / Skor Melingkar
 function renderTopGaugeMeter(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -434,7 +396,6 @@ function renderTopGaugeMeter(data, p, t, pal) {
 
   const cx = W / 2, cy = py + 265, radius = 145;
 
-  // Lingkaran dasar
   ctx.lineWidth = 28;
   ctx.lineCap = 'round';
   ctx.strokeStyle = '#E2E8F0';
@@ -442,14 +403,12 @@ function renderTopGaugeMeter(data, p, t, pal) {
   ctx.arc(cx, cy, radius, Math.PI * 0.75, Math.PI * 2.25);
   ctx.stroke();
 
-  // Lingkaran progres aktif
   const endAngle = Math.PI * 0.75 + (Math.PI * 1.5) * (curPct / 100);
   ctx.strokeStyle = pal.accent;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, Math.PI * 0.75, endAngle);
   ctx.stroke();
 
-  // Angka tengah
   ctx.fillStyle = '#0F172A';
   ctx.font = '900 84px Montserrat, sans-serif';
   ctx.fillText(curPct + '%', cx, cy + 22);
@@ -458,7 +417,6 @@ function renderTopGaugeMeter(data, p, t, pal) {
   ctx.font = '800 24px Montserrat, sans-serif';
   ctx.fillText(String(data.sub_label || 'TINGKAT DAMPAK').toUpperCase(), cx, cy + 64);
 
-  // Keterangan bawah
   roundRect(px + 38, py + 448, pw - 76, 78, 16);
   ctx.fillStyle = '#FFF7ED';
   ctx.fill();
@@ -468,7 +426,6 @@ function renderTopGaugeMeter(data, p, t, pal) {
   ctx.fillText(data.footer || 'Angka ini menunjukkan pengaruh yang sangat besar!', W / 2, py + 496);
 }
 
-// TIPE 5: LINE CHART ("line_chart") — Grafik Tren 2 Kurva + Area Gradien
 function renderTopLineChart(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -569,7 +526,6 @@ function renderTopLineChart(data, p, t, pal) {
   ctx.fillText(data.footer || 'Perbedaan Hasilnya Terlihat Sangat Jelas!', W / 2, py + 498);
 }
 
-// TIPE 6: TWO CARDS / VS ("two_cards" / "comparison_vs") — Duel Mitos vs Fakta dengan Badge VS
 function renderTopTwoCards(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -630,7 +586,6 @@ function renderTopTwoCards(data, p, t, pal) {
     ctx.restore();
   });
 
-  // Lencana VS di tengah
   ctx.save();
   ctx.translate(W / 2, cy + ch / 2);
   ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2);
@@ -649,7 +604,6 @@ function renderTopTwoCards(data, p, t, pal) {
   ctx.fillText(data.footer || 'Jangan Sampai Tertukar Lagi Ya!', W / 2, py + 497);
 }
 
-// TIPE 7: THREE CARDS ("three_cards") — 3 Kartu Berjajar dengan Highlight Bergantian
 function renderTopThreeCards(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -710,7 +664,6 @@ function renderTopThreeCards(data, p, t, pal) {
   ctx.fillText(data.footer || 'Ketiga Faktor Ini Saling Berkaitan Erat!', W / 2, py + 497);
 }
 
-// TIPE 8: CHECKLIST ("checklist") — Langkah Tercentang Berurutan
 function renderTopChecklist(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -759,7 +712,6 @@ function renderTopChecklist(data, p, t, pal) {
   });
 }
 
-// TIPE 9: CTA CLOSING ("cta_closing") — Kartu Penutup Interaktif
 function renderTopCtaCard(data, p, t, pal) {
   const px = 70, py = 148, pw = W - 140, ph = 562;
   drawPanelCard(px, py, pw, ph, 28);
@@ -799,9 +751,6 @@ function renderTopCtaCard(data, p, t, pal) {
   ctx.restore();
 }
 
-// =========================================================================
-// 4. PANEL TENGAH: KARTU TELEPROMPTER KATA-PER-KATA + EQUALIZER
-// =========================================================================
 function renderTeleprompterCard(scene, t, data, pal) {
   const px = 70, py = 748, pw = W - 140, ph = 492;
   drawPanelCard(px, py, pw, ph, 28, '#FFFFFF');
@@ -899,9 +848,6 @@ function renderTeleprompterCard(scene, t, data, pal) {
   }
 }
 
-// =========================================================================
-// 5. KARAKTER PRESENTER BAWAH (DENGAN PERPINDAHAN POSISI SMOOTH & BUBBLE REAKSI)
-// =========================================================================
 function drawHandPalm(x, y, rot, scale = 1) {
   ctx.save();
   ctx.translate(x, y);
@@ -993,12 +939,10 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#0F172A';
 
-  // Badan
   roundRect(-115, 45, 230, 260, 44);
   ctx.fillStyle = shirt;
   ctx.fill(); ctx.stroke();
 
-  // Kerah
   ctx.fillStyle = 'rgba(255,255,255,0.16)';
   ctx.beginPath();
   ctx.moveTo(-42, 42); ctx.lineTo(0, 92); ctx.lineTo(-55, 112); ctx.closePath();
@@ -1009,7 +953,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
 
   ctx.beginPath(); ctx.moveTo(0, 92); ctx.lineTo(0, 290); ctx.stroke();
 
-  // Lanyard & ID Card
   ctx.strokeStyle = '#38BDF8';
   ctx.lineWidth = 8;
   ctx.beginPath();
@@ -1025,7 +968,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   ctx.fillStyle = '#2563EB';
   ctx.fill();
 
-  // Kepala
   ctx.save();
   ctx.rotate(headTilt);
   roundRect(-24, 6, 48, 46, 12);
@@ -1040,7 +982,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   ctx.fillStyle = '#F7C9A9';
   ctx.fill(); ctx.stroke();
 
-  // Rambut
   ctx.beginPath();
   ctx.moveTo(-104, -110);
   ctx.quadraticCurveTo(-116, -195, -45, -214);
@@ -1055,13 +996,11 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   ctx.fillStyle = '#1E2430';
   ctx.fill(); ctx.stroke();
 
-  // Alis
   const browY = gMode === 3 ? -144 : (speaking ? -138 : -134);
   ctx.lineWidth = 6;
   ctx.beginPath(); ctx.arc(-44, browY, 18, Math.PI + 0.3, -0.3); ctx.stroke();
   ctx.beginPath(); ctx.arc(44, browY, 18, Math.PI + 0.3, -0.3); ctx.stroke();
 
-  // Mata
   if (blinking) {
     ctx.beginPath(); ctx.moveTo(-62, -104); ctx.lineTo(-26, -104); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(26, -104); ctx.lineTo(62, -104); ctx.stroke();
@@ -1074,19 +1013,16 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
     });
   }
 
-  // Kacamata
   ctx.lineWidth = 5;
   ctx.strokeStyle = '#0F172A';
   roundRect(-76, -128, 64, 46, 12); ctx.stroke();
   roundRect(12, -128, 64, 46, 12); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-12, -106); ctx.lineTo(12, -106); ctx.stroke();
 
-  // Pipi
   ctx.fillStyle = 'rgba(244, 114, 114, 0.38)';
   ctx.beginPath(); ctx.ellipse(-64, -76, 15, 9, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(64, -76, 15, 9, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Mulut Lip-Sync
   ctx.lineWidth = 5;
   if (gMode === 1) {
     ctx.beginPath(); ctx.moveTo(-16, -54); ctx.quadraticCurveTo(0, -60, 18, -50); ctx.stroke();
@@ -1100,7 +1036,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
     ctx.beginPath(); ctx.arc(0, -62, 20, 0.2, Math.PI - 0.2); ctx.stroke();
   }
 
-  // Simbol Emosi Melayang
   if (gMode === 1) {
     ctx.save();
     ctx.translate(125, -175 + Math.sin(t * 4) * 6);
@@ -1119,7 +1054,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   }
   ctx.restore();
 
-  // Lengan & Gestur
   ctx.lineWidth = 5;
   ctx.strokeStyle = '#0F172A';
   if (gMode === 0) {
@@ -1155,7 +1089,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
     drawThumbsUpHand(0, 128, Math.PI + 0.35); ctx.restore();
   }
 
-  // Balon Reaksi Singkat di Samping Presenter
   if (calloutText) {
     drawSpeechCallout(calloutText, side);
   }
@@ -1163,7 +1096,6 @@ function drawPresenterHalfBody(t, p, speaking, blinking, side, gestureOverride, 
   ctx.restore();
 }
 
-// Progress Bar Atas
 function drawTopProgressBar(t, pal) {
   const totalDur = window.SCENES.length ? window.SCENES[window.SCENES.length - 1].end : 1;
   const p = clamp01(t / Math.max(totalDur, 0.1));
@@ -1179,9 +1111,6 @@ function getSideX(side) {
   return W / 2;
 }
 
-// =========================================================================
-// MAIN DRAW LOOP (DENGAN TRANSISI SLIDE/ZOOM ANTAR ADEGAN & LERP PRESENTER)
-// =========================================================================
 function draw(t) {
   const active = getActiveScene(t);
   if (!active) return;
@@ -1193,13 +1122,9 @@ function draw(t) {
   const pal = getThemePalette(themeName);
   const isDark = themeName === 'dark';
 
-  // 1. Latar gradien + partikel hidup
   drawDynamicBackground(themeName, t, index);
-
-  // 2. Header kategori & badge poin
   drawTopHeader(data, index, pal, isDark);
 
-  // 3. Panel Atas dengan Transisi Masuk Dinamis (Slide + Pop-in)
   const enterRaw = clamp01(localT / 0.35);
   const enterEase = easeOutBack(enterRaw);
   const slideOffset = (1 - easeOutCubic(enterRaw)) * (index % 2 === 0 ? -90 : 90);
@@ -1248,10 +1173,8 @@ function draw(t) {
   }
   ctx.restore();
 
-  // 4. Panel Tengah: Kartu Teleprompter Kata-per-Kata + Audio Equalizer
   renderTeleprompterCard(scene, t, data, pal);
 
-  // 5. Karakter Presenter Meluncur Mulus dari Posisi Adegan Sebelumnya ke Posisi Baru
   const prevScene = index > 0 ? window.SCENES[index - 1] : null;
   const prevSide = prevScene
     ? ((prevScene.data && prevScene.data.side) || ((index - 1) % 2 === 0 ? 'center' : ((index - 1) % 4 === 1 ? 'right' : 'left')))
@@ -1276,6 +1199,5 @@ function draw(t) {
   );
   ctx.restore();
 
-  // 6. Progress Bar Waktu
   drawTopProgressBar(t, pal);
 }

@@ -1,23 +1,6 @@
 """
-CloudPad Note
-Title: react_video
-Date: 2026-11-18 02:11:26
-Tags: lokal, py
-"""
-
-"""
 Naskah teks -> video animasi bergaya React v3 (Kinetic Editorial + Dynamic SVG Scenes) yang SINKRON dengan suara.
-
-Peningkatan v3:
-  1. Penghitung Poin Akurat: Kata urutan ("Pertama", "Kedua", dst.) selalu mulai dari POIN 01,
-     tidak bergeser oleh kalimat pembuka/statistik sebelumnya.
-  2. Ikon Vektor (SVG) Tematik Otomatis: Mendeteksi topik tiap kalimat (mesin/oli, suhu/radiator,
-     bahan bakar/filter, kecepatan/pengemudi, biaya/uang, waktu/jadwal, statistik, dll.) dan
-     menampilkan ikon vektor tajam dengan animasi denyut halus di kartu atas.
-  3. Ringkasan Visual Inti (Tidak Redundan): Kartu atas menampilkan ringkasan frasa inti (3-6 kata)
-     yang melengkapi teks karaoke di bawah, bukan mengulang kalimat mentah.
-  4. Kinetic Karaoke Typography + Pratinjau Kalimat Berikutnya + Audio Equalizer Aktif.
-  5. Fix durasi CompositeAudioClip (.set_duration(total)) untuk MoviePy 1.0.3.
+Dilengkapi auto-retry TTS 4x dan dukungan penuh BGM dari auto_shorts.py.
 """
 
 import json
@@ -37,7 +20,6 @@ from subtitles_export import safe_export
 MAX_SECONDS = 90
 LABEL = os.getenv("REACT_LABEL", "FAKTA & EDUKASI")
 PALETTES = [
-    # (bg1, bg2, accent, accentSoft, cardBg)
     ("#0f172a", "#1e3a8a", "#fbbf24", "rgba(251, 191, 36, 0.18)", "rgba(15, 23, 42, 0.65)"),
     ("#022c22", "#065f46", "#34d399", "rgba(52, 211, 153, 0.18)", "rgba(2, 44, 34, 0.65)"),
     ("#1c0a05", "#7c2d12", "#fb923c", "rgba(251, 146, 60, 0.18)", "rgba(28, 10, 5, 0.65)"),
@@ -104,7 +86,6 @@ function isSpeaking(t) {
   return DATA.words.some((w) => t >= w.s - 0.04 && t <= w.e + 0.04);
 }
 
-// Komponen Ikon Vektor SVG Tajam Sesuai Tema Kalimat
 function TopicSvg(props) {
   const kind = props.kind || "spark";
   const color = props.color || ACC;
@@ -489,7 +470,6 @@ ORDINAL_MAP = {
 
 
 def _detect_svg_kind(text: str) -> tuple[str, str]:
-    """Pilih ikon vektor SVG dan label kategori mikro berdasarkan kata kunci kalimat."""
     low = text.lower()
     if any(k in low for k in ("oli", "pelumas", "solar", "bahan bakar", "air", "cairan")):
         return "drop", "SISTEM FLUIDA & PELUMASAN"
@@ -509,8 +489,7 @@ def _detect_svg_kind(text: str) -> tuple[str, str]:
 
 
 def _make_concise_summary(body: str) -> str:
-    """Ambil frasa inti 4-6 kata sebelum tanda koma atau kata sambung agar ringkas & tidak mengulang karaoke."""
-    clause = re.split(r"[,;:]|(?:agar|supaya|sebelum|karena|sehingga|yang|tanpa|dengan)", body, maxsplit=1)[0]
+    clause = re.split(r"[,;:]| (?:agar|supaya|sebelum|karena|sehingga|yang|tanpa|dengan) ", body, maxsplit=1)[0]
     words = [w.strip(".,!?;:") for w in clause.split() if w.strip(".,!?;:")]
     if len(words) < 3:
         words = [w.strip(".,!?;:") for w in body.split() if w.strip(".,!?;:")][:6]
@@ -521,7 +500,6 @@ def _make_concise_summary(body: str) -> str:
 
 
 def _extract_sentence_visual(sentence: str, idx: int, total: int, step_counter: list) -> dict:
-    """Bangun kartu visual dengan penomoran poin akurat, ikon SVG tematik, dan ringkasan inti."""
     clean = " ".join(sentence.strip().split())
     m_num = re.search(
         r"([0-9]+(?:[.,][0-9]+)?\s?(?:%|persen|juta|miliar|triliun|km|tahun|bulan|hari|jam|menit|detik|kali))",
@@ -580,7 +558,7 @@ def make_page(title: str, words: list, duration: float, label: str = None, sente
 
 
 def _make_voice_with_retry(sentences: list, workdir: Path, retries: int = 4, delay: float = 2.5):
-    """Panggil AS.make_voice dengan auto-retry saat koneksi TTS terputus (ConnectionResetError / timeout)."""
+    """Panggil AS.make_voice dengan auto-retry saat koneksi TTS terputus."""
     last_err = None
     for attempt in range(1, retries + 1):
         try:
