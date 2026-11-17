@@ -142,19 +142,53 @@ def parse_t10_input(raw_text: str) -> dict:
     1. JSON lengkap (bisa kustom semua field K + opsional 'narasi' / 'text')
     2. Teks berpemisah '|' (mode cepat 7 bagian atau lengkap 19 bagian)
     """
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I).strip()
+    cleaned = raw_text.lstrip("\ufeff").strip()
+    cleaned = re.sub(r"^```(?:json|text|txt)?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
+    cleaned = re.sub(r"^\s*/t10(?:@\w+)?\s*", "", cleaned, count=1, flags=re.I).strip()
+    cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned).strip()
 
     k = json.loads(json.dumps(DEFAULT_K))
     narration = None
 
-    if cleaned.startswith("{"):
+    if cleaned.startswith(("{", "[")):
         user_json = json.loads(cleaned)
-        narration = user_json.pop("narasi", None) or user_json.pop("text", None)
+        # Buka wrapper aplikasi catatan HP seperti {"content": "{...}"}
+        if isinstance(user_json, dict) and "content" in user_json and not any(
+            x in user_json for x in ("pembuka", "kartu", "narasi", "text")
+        ):
+            inner = str(user_json["content"]).strip()
+            if inner.startswith(("{", "[")):
+                user_json = json.loads(inner)
+        if isinstance(user_json, list) and user_json:
+            user_json = user_json[0]
+        if not isinstance(user_json, dict):
+            raise ValueError("Isi JSON T10 harus berupa objek {...}")
+
+        narration = (
+            user_json.pop("narasi", None)
+            or user_json.pop("text", None)
+            or user_json.pop("narration", None)
+            or user_json.pop("script", None)
+        )
+        # Jika JSON hanya berisi {"mode": "t10", "title": "...", "text": "..."} tanpa struktur kartu,
+        # otomatis bangunkan kartu dari teksnya!
+        has_t10_structure = any(
+            key in user_json for key in ("pembuka", "kartu", "lelah", "pelan", "tekanan", "penutup")
+        )
+        if not has_t10_structure and narration:
+            plain_title = str(user_json.get("title") or user_json.get("judul") or "").strip()
+            combined = f"judul: {plain_title}\n{narration}" if plain_title else str(narration)
+            return _auto_build_k_from_plain_text(combined, narration_override=str(narration).strip())
+
         for key, val in user_json.items():
+            if val is None or val == "":
+                continue
             if isinstance(val, dict) and isinstance(k.get(key), dict):
-                k[key].update(val)
+                for sub_k, sub_v in val.items():
+                    if sub_v is not None and sub_v != "":
+                        k[key][sub_k] = sub_v
             else:
                 k[key] = val
     else:
