@@ -1,11 +1,12 @@
 """
-Template T10 Grid Lampu Sorot -> Video MP4 Vertikal 1080x1920 (16 Detik / 480 Frame)
+Template T10 Grid Lampu Sorot -> Video MP4 Vertikal 1080x1920 (Durasi Dinamis mengikuti TTS)
 Adaptasi dari template Remotion T10Sorot oleh Maliki Saputra (@malikisaputra) — https://malikisaputra.biz.id
 Terintegrasi langsung dengan mesin Playwright js_video.py, tts_provider.py, dan subtitles_export.py.
 """
 
 import base64
 import json
+import math
 import re
 from pathlib import Path
 
@@ -18,8 +19,8 @@ import tts_provider
 from subtitles_export import safe_export
 
 FPS = 30
-DURASI_FRAME = 480  # 16.0 detik @ 30fps
-DURASI_DETIK = DURASI_FRAME / FPS
+BASE_FRAMES = 480  # Basis acuan animasi asli (16.0 detik @ 30fps)
+MIN_DURASI_DETIK = 12.0  # Durasi minimum jika tanpa narasi / narasi sangat pendek
 
 ASSETS_DIR = Path("assets/t10")
 
@@ -180,6 +181,9 @@ T10_HTML_TEMPLATE = """<!doctype html>
 const K = __K_JSON__;
 const h = React.createElement;
 const FPS = 30;
+const BASE_FRAMES = 480;
+const TOTAL_FRAMES = K.totalFrames || BASE_FRAMES;
+
 const SERIF = "'Instrument Serif', Georgia, serif";
 const INTER = "'Inter', sans-serif";
 const ARCHIVO = "'Archivo Black', sans-serif";
@@ -455,7 +459,10 @@ function T10SorotApp(props) {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 function draw(t) {
-  const frame = Math.min(479, Math.max(0, Math.round(t * FPS)));
+  // Petakan waktu aktual (t) secara proporsional ke basis 480 frame
+  const actualFrame = t * FPS;
+  const scaledFrame = (actualFrame / TOTAL_FRAMES) * BASE_FRAMES;
+  const frame = Math.min(BASE_FRAMES - 1, Math.max(0, Math.round(scaledFrame)));
   ReactDOM.flushSync(function() {
     root.render(h(T10SorotApp, { frame: frame }));
   });
@@ -466,7 +473,7 @@ function draw(t) {
 
 
 def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
-    """Merender template T10Sorot (16 detik) + suara TTS + musik latar + SRT/JSON."""
+    """Merender template T10Sorot (durasi dinamis sesuai TTS) + musik latar + SRT/JSON."""
     workdir.mkdir(parents=True, exist_ok=True)
     narration = k_data.get("narration", "").strip()
     sentences = AS.split_sentences(narration)
@@ -474,33 +481,41 @@ def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
     audio = None
     all_marks = []
     audio_clips = []
+    durasi_detik = 16.0  # Default jika tidak ada narasi
+
     if sentences:
         print(f"• Membuat suara narasi T10 ({tts_provider.label()})...")
         audio_paths, all_marks = AS.make_voice(sentences, workdir)
         audio_clips = [AudioFileClip(str(p)) for p in audio_paths]
         voice = concatenate_audioclips(audio_clips)
 
+        # Tambah buffer 0.8 detik di akhir agar penutup tidak terpotong mendadak
+        durasi_detik = max(MIN_DURASI_DETIK, round(voice.duration + 0.8, 2))
+        print(f"• Durasi dinamis T10: {durasi_detik:.2f} detik (suara: {voice.duration:.2f}d)")
+
         if AS.MUSIC:
             try:
-                audio = CompositeAudioClip([voice, AS.make_music(DURASI_DETIK)])
+                audio = CompositeAudioClip([voice, AS.make_music(durasi_detik)])
             except Exception as e:
                 print(f"[!] Musik dilewati: {e}")
                 audio = voice
         else:
             audio = voice
 
+    total_frames = max(1, math.ceil(durasi_detik * FPS))
+    k_data["totalFrames"] = total_frames
+
     mix_wav = None
     if audio is not None:
         mix_wav = workdir / "t10_mix.wav"
-        dur_audio = min(audio.duration, DURASI_DETIK) if audio.duration is not None else DURASI_DETIK
-        audio.set_duration(dur_audio).write_audiofile(
+        audio.set_duration(durasi_detik).write_audiofile(
             str(mix_wav), fps=44100, logger=None
         )
 
     blob = json.dumps(k_data, ensure_ascii=False).replace("</", "<\/")
     html = T10_HTML_TEMPLATE.replace("__K_JSON__", blob)
 
-    out = js_video.render_html_to_mp4(html, DURASI_DETIK, mix_wav, out_path, workdir)
+    out = js_video.render_html_to_mp4(html, durasi_detik, mix_wav, out_path, workdir)
 
     if sentences and audio_clips:
         title = f"{k_data['pembuka']['depan']} {k_data['pembuka']['label']}".strip()
@@ -509,7 +524,7 @@ def build_t10_video(k_data: dict, out_path: Path, workdir: Path) -> Path:
             sentences,
             [c.duration for c in audio_clips],
             all_marks,
-            DURASI_DETIK,
+            durasi_detik,
             out,
         )
     return out
