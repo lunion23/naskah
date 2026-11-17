@@ -1,0 +1,117 @@
+{
+  "title": "Mitos vs Fakta Lulusan SMK (Gaya Editorial v12)",
+  "scenes": [
+    {
+      "type": "chat_hook",
+      "theme": "cream",
+      "narration": "Katanya lulusan SMK itu banyak yang nganggur, masa sih? Kalaupun benar, coba kita bedah logikanya.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "MITOS VS FAKTA",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "header": "Komentar Netizen vs Fakta SMK",
+        "question": "Katanya lulusan SMK itu banyak yang nganggur...",
+        "reply": "Masa sih?! 🤯 Coba kita bedah logikanya!",
+        "side": "center"
+      }
+    },
+    {
+      "type": "line_chart",
+      "theme": "cream",
+      "narration": "Pertama, kecepatan industri. Dunia kerja itu geraknya cepat banget. Kadang alat atau teknologi yang dipelajari di sekolah udah ketinggalan zaman sama standar perusahaan saat ini.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "POIN 01 • INDUSTRI",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "pill": "01 • KECEPATAN INDUSTRI",
+        "right_label": "Dunia Kerja vs Sekolah",
+        "top_tag": "Standar Industri Melesat 🚀",
+        "bot_tag": "Alat Sekolah Perlu Update 🐢",
+        "footer": "Teknologi Industri Bergerak Cepat Tiap Tahun!",
+        "side": "right"
+      }
+    },
+    {
+      "type": "two_cards",
+      "theme": "cream",
+      "narration": "Kedua, jebakan hard skill. Banyak yang jago banget secara teknis, tapi lupa ngembangin soft skill.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "POIN 02 • HARD SKILL",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "pill": "02 • JEBAKAN HARD SKILL",
+        "left_icon": "✅",
+        "left_title": "HARD SKILL",
+        "left_desc": "Jago Banget Secara Teknis",
+        "right_icon": "❗",
+        "right_title": "SOFT SKILL",
+        "right_desc": "Sering Lupa Dikembangkan!",
+        "footer": "Skill Teknis Saja Belum Cukup di Dunia Kerja",
+        "side": "right"
+      }
+    },
+    {
+      "type": "three_cards",
+      "theme": "cream",
+      "narration": "Padahal di dunia nyata, kemampuan komunikasi, adaptasi, dan cara kamu kerja bareng tim itu nilainya mahal banget. Perusahaan jelas lebih milih orang yang gampang diajak kerja sama.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "POIN 02 • SOFT SKILL",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "pill": "NILAI MAHAL DI DUNIA NYATA",
+        "cards": [
+          {
+            "icon": "💬",
+            "title": "Komunikasi",
+            "desc": "Bicara Jelas & Efektif"
+          },
+          {
+            "icon": "🔄",
+            "title": "Adaptasi",
+            "desc": "Cepat Belajar Hal Baru"
+          },
+          {
+            "icon": "🤝",
+            "title": "Kerja Tim",
+            "desc": "Mudah Diajak Kolaborasi"
+          }
+        ],
+        "footer": "Perusahaan Pilih Orang yang Gampang Diajak Kerja Sama!",
+        "side": "left"
+      }
+    },
+    {
+      "type": "checklist",
+      "theme": "cream",
+      "narration": "Solusinya simpel, jangan cuma ngandelin ijazah, update terus skill kamu. Misalnya ikut ekskul, ikut organisasi, dan terpenting perbanyak portofolio kamu.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "SOLUSI KONKRET",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "pill": "SOLUSI SIMPEL & NYATA",
+        "steps": [
+          "Jangan Cuma Mengandalkan Ijazah",
+          "Update Terus Skill & Ikut Ekskul",
+          "Aktif Ikut Organisasi Sekolah",
+          "Perbanyak Portofolio Karya Kamu!"
+        ],
+        "side": "right"
+      }
+    },
+    {
+      "type": "cta_closing",
+      "theme": "cream",
+      "narration": "Siap buktiin kalau anak SMK itu berkualitas? Next, mau kita bahas apa lagi? Komen di bawah.",
+      "data": {
+        "channel": "EDUKASI KARIR SMK",
+        "badge": "ANAK SMK BISA!",
+        "speaker_label": "🎙️ NARASI GURU SMK",
+        "pill": "SAATNYA BUKTIKAN!",
+        "icon": "⭐",
+        "headline": "Anak SMK Itu Berkualitas!",
+        "subheadline": "Next Bahas Apa Lagi? Tulis di Komentar Bawah!",
+        "side": "center"
+      }
+    }
+  ]
+}

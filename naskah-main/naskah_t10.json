@@ -1,0 +1,35 @@
+{
+  "narasi": "Kamu merasa sudah kerja keras setiap hari, tapi hasilnya masih segitu-gitu aja? Mungkin bukan karena kamu kurang usaha, tapi energimu habis di hal yang salah. Jalan saja pelan asal tidak berhenti, fokus proses, abaikan drama. Suatu hari kamu akan menang karena konsisten, jadi mustahil untuk kalah!",
+  "warna": {
+    "emas": "#E2B33C",
+    "merah": "#B8292F"
+  },
+  "pembuka": {
+    "depan": "KERJA KERAS",
+    "redup": "TAPI STAGNAN?",
+    "label": "FOKUS"
+  },
+  "lelah": {
+    "kata": "Melelahkan.",
+    "kecil": "Tapi jangan mundur."
+  },
+  "kartu": [
+    ["⏳", "Sibuk tanpa\nprioritas"],
+    ["🔄", "Terlalu sering\nmultitasking"],
+    ["📉", "Jarang evaluasi\nsistem kerja"],
+    ["🔥", "Tetap jalan\npelan"]
+  ],
+  "pelan": {
+    "depan": "Jalan saja",
+    "emas": "PELAN",
+    "bawah": "asal tidak berhenti"
+  },
+  "tekanan": ["FOKUS PROSES", "ABAIKAN DRAMA"],
+  "suatuHari": "Suatu hari",
+  "menang": "KAMU AKAN MENANG KARENA",
+  "konsisten": "KONSISTEN",
+  "penutup": {
+    "atas": "JADI MUSTAHIL UNTUK",
+    "besar": "KALAH"
+  }
+}

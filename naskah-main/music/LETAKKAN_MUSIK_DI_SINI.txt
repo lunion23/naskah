@@ -1,0 +1,7 @@
+Taruh file musik latar (.mp3 / .wav) di folder ini.
+Bot memilih satu secara acak untuk tiap video.
+
+PENTING: pakai musik bebas hak cipta, misalnya dari YouTube Audio Library
+(studio.youtube.com -> Audio library) atau musik yang kamu punya lisensinya.
+Jika folder ini kosong, bot membuat musik ambient sederhana secara otomatis.
+Atur volume lewat MUSIC_VOLUME di auto_shorts.py, atau matikan dengan MUSIC = False.
