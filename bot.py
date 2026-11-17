@@ -514,13 +514,17 @@ def handle_js(chat_id, code):
 def _is_t10_json(raw_text: str) -> bool:
     try:
         cleaned = _clean_json_text(raw_text)
-        if not cleaned.startswith("{"):
+        if not cleaned.startswith(("{", "[")):
             return False
         obj = _unwrap_note_wrapper(json.loads(cleaned))
+        if isinstance(obj, list) and obj:
+            obj = _unwrap_note_wrapper(obj[0])
         if not isinstance(obj, dict):
             return False
+        if str(obj.get("mode", "")).strip().lower() == "t10":
+            return True
         t10_keys = {"pembuka", "kartu", "lelah", "pelan", "tekanan", "penutup"}
-        return len(t10_keys.intersection(obj.keys())) >= 2
+        return len(t10_keys.intersection(obj.keys())) >= 1
     except Exception:
         return False
 
