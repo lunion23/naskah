@@ -94,8 +94,9 @@ JS_HELP = (
     "Tersedia: canvas, ctx, W, H (jangan dideklarasikan ulang).\n"
     "Tulis function draw(t) { ... } dengan t = detik, atau pakai requestAnimationFrame biasa.\n\n"
     "Baris pengaturan di awal kode:\n"
-    "// durasi: 10   (detik, maks 45, bawaan 8)\n"
-    "// narasi: teks yang dibacakan   (opsional, menambah suara)\n\n"
+    "// durasi: 10   (detik, maks 300, bawaan 8)\n"
+    "// judul: Judul Video   (opsional, untuk metadata subtitle)\n"
+    "// narasi: teks yang dibacakan   (opsional, menambah suara + file .srt & .json)\n\n"
     "Contoh:\n"
     "/js\n"
     "// durasi: 5\n"
@@ -152,7 +153,9 @@ def send_document(chat_id, path, caption=""):
 
 def send_extras(chat_id, video_path):
     """Kirim catatan suara (bila ada), lalu file subtitle (.srt) dan waktu (.json) di samping video."""
-    for note in tts_provider.take_notes():
+    import subtitles_export
+
+    for note in tts_provider.take_notes() + subtitles_export.take_notes():
         send(chat_id, "ℹ️ " + note)
     for ext, caption in ((".srt", "Subtitle (SRT)"), (".json", "Waktu per kalimat dan kata (JSON)")):
         p = Path(video_path).with_suffix(ext)
@@ -612,6 +615,7 @@ def handle_js(chat_id, code):
         Path("output").mkdir(exist_ok=True)
         out = build_js_video(code, Path("output") / f"js-{n:02d}.mp4", Path("cache") / f"js{n}")
         send_video(chat_id, out, "Video dari kode JS")
+        send_extras(chat_id, out)
     except Exception as e:
         traceback.print_exc()
         send(chat_id, f"Gagal membuat video JS: {str(e)[:400]}")
