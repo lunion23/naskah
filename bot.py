@@ -1,6 +1,26 @@
 """
+CloudPad Note
+Title: bot
+Date: 2026-11-18 02:09:24
+Tags: lokal, py
+"""
+
+"""
 Bot Telegram -> pembuat Shorts -> kirim balik ke Telegram.
 Dijalankan oleh GitHub Actions (lihat .github/workflows/shorts.yml).
+
+Cara kerja:
+  1. Ambil pesan: dari UPDATE_JSON (mode webhook) atau getUpdates (mode polling).
+  2. Pada mode polling, tandai pesan sudah dibaca agar tidak diproses dua kali.
+  3. Buat video tiap naskah, kirim hasilnya ke chat pengirim.
+
+Format pesan teks:
+    judul: Madu Tidak Pernah Basi
+    keyword: honey
+    Tahukah kamu, ada satu makanan yang hampir tidak pernah basi? Madu. ...
+
+Atau kirim file .json berisi banyak naskah:
+    [{"title": "...", "keyword": "...", "text": "..."}]
 """
 
 import itertools
@@ -54,9 +74,7 @@ HELP = (
     "Video animasi React dari naskah:\n"
     "Kirim  /react  diikuti naskah (format sama seperti di atas). Animasi sinkron dengan suara.\n\n"
     "Video infografis & animasi 2D (/motion):\n"
-    "Kirim  /motion  diikuti naskah atau file .json storyboard. Ketik /motionhelp untuk panduan.\n\n"
-    "Template Reels Grid Lampu Sorot (/t10):\n"
-    "Kirim  /t10  diikuti teks 7 atau 19 bagian (pisah dengan |) atau naskah paragraf. Ketik /t10help untuk panduan."
+    "Kirim  /motion  diikuti naskah atau file .json storyboard. Ketik /motionhelp untuk panduan.\n\n""Template Reels Grid Lampu Sorot (/t10):\n""Kirim  /t10  diikuti teks 7 atau 19 bagian (pisah dengan |). Ketik /t10help untuk panduan."
 )
 
 REACT_HELP = (
@@ -76,7 +94,7 @@ JS_HELP = (
     "Tersedia: canvas, ctx, W, H (jangan dideklarasikan ulang).\n"
     "Tulis function draw(t) { ... } dengan t = detik, atau pakai requestAnimationFrame biasa.\n\n"
     "Baris pengaturan di awal kode:\n"
-    "// durasi: 10   (detik, maks 300, bawaan 8)\n"
+    "// durasi: 10   (detik, maks 45, bawaan 8)\n"
     "// narasi: teks yang dibacakan   (opsional, menambah suara)\n\n"
     "Contoh:\n"
     "/js\n"
@@ -89,14 +107,16 @@ JS_HELP = (
     "}"
 )
 
+
+
 T10_HELP = (
-    "Mode /t10: Template Video Reels Grid Lampu Sorot (durasi dinamis 12–300 detik mengikuti suara, 1080x1920).\n\n"
+    "Mode /t10: Template Video Reels Grid Lampu Sorot (16 detik, 1080x1920).\n\n"
     "Cara 1 (Teks Cepat 7 Bagian):\n"
     "/t10 BANYAK YANG | BERHENTI | FOKUS | Melelahkan. | Tapi jangan mundur. | JADI MUSTAHIL UNTUK | KALAH\n\n"
     "Cara 2 (Teks Lengkap 19 Bagian):\n"
     "/t10 Depan | Redup | Label | Kata Merah | Keterangan | Kartu1 | Kartu2 | Kartu3 | Kartu4 | Pelan Depan | Pelan Emas | Pelan Bawah | Tekanan1 | Tekanan2 | SuatuHari | Menang | Konsisten | Penutup Atas | Penutup Besar\n\n"
-    "Cara 3 (Naskah Paragraf Biasa / JSON):\n"
-    "Kirim /t10 diikuti paragraf biasa atau kirim file .json T10 langsung (tanpa caption pun terdeteksi otomatis)."
+    "• Tambahkan baris `narasi: teks suara...` di bawahnya jika ingin mengatur suara VO sendiri.\n"
+    "• Bisa juga kirim file .json dengan caption /t10."
 )
 
 # ---------------- Telegram helpers ----------------
@@ -200,8 +220,9 @@ def read_document(doc):
     return [i for i in items if i]
 
 
+
 MOTION_HELP = (
-    "Mode /motion: video infografis & animasi 2D vertikal (gaya explainer v15).\n\n"
+    "Mode /motion: video infografis & animasi 2D vertikal (gaya explainer).\n\n"
     "Cara 1 (Teks langsung):\n"
     "/motion\n"
     "judul: Anggaran Negara\n"
@@ -256,6 +277,7 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
         pct_match = re.search(r"([0-9]{1,3})\s*(?:%|persen)", s, re.I)
 
         if i == 0:
+            # Adegan pembuka: Chat Hook jika berupa pertanyaan, atau Big Number jika pernyataan
             if "?" in s:
                 scenes.append({
                     "type": "chat_hook",
@@ -357,6 +379,7 @@ def _text_to_motion_storyboard(title: str, text: str) -> dict:
                 },
             })
         elif i % 3 == 2:
+            # Pecah kalimat menjadi 3 poin singkat untuk kartu 3 kolom
             chunks = [c.strip() for c in re.split(r"[,;]|\bdan\b", s) if c.strip()]
             cards_3 = []
             for idx3 in range(3):
@@ -444,6 +467,7 @@ def extract_motion(msg):
         raw_text = download_text(doc)
         if re.match(r"^/motion\b", caption, re.I):
             return _parse_motion_json(raw_text)
+        # Deteksi otomatis untuk file JSON storyboard (langsung maupun dari ekspor aplikasi Note)
         cleaned = _clean_json_text(raw_text)
         if ("scenes" in cleaned) and cleaned.startswith(("{", "[")):
             try:
@@ -545,7 +569,7 @@ def handle_react(chat_id, items):
     items = items[:MAX_REACT_ITEMS]
     send(chat_id, f"🎬 Membuat {len(items)} video animasi React. Tiap video sekitar 3-6 menit...")
 
-    from react_video import build_react_video
+    from react_video import build_react_video  # impor di sini agar run biasa tetap ringan
 
     for n, item in enumerate(items, 1):
         try:
@@ -582,7 +606,7 @@ def handle_js(chat_id, code):
         return
     send(chat_id, "🎬 Menjalankan kode JS dan merekam video...")
     try:
-        from js_video import build_js_video
+        from js_video import build_js_video  # impor di sini agar run biasa tetap ringan
 
         n = next(counter)
         Path("output").mkdir(exist_ok=True)
@@ -591,6 +615,7 @@ def handle_js(chat_id, code):
     except Exception as e:
         traceback.print_exc()
         send(chat_id, f"Gagal membuat video JS: {str(e)[:400]}")
+
 
 
 # ---------------- Template T10 Grid Lampu Sorot ----------------
@@ -660,7 +685,6 @@ def handle_t10(chat_id, k_data):
     except Exception as e:
         traceback.print_exc()
         send(chat_id, f"Gagal membuat video /t10: {str(e)[:400]}")
-
 
 # ---------------- Proses satu pesan ----------------
 def handle_message(msg):
@@ -736,7 +760,7 @@ def handle_message(msg):
     items = items[:MAX_ITEMS]
     send(chat_id, f"Diterima {len(items)} naskah. Mulai diproses...")
 
-    build_video = get_build_video()
+    build_video = get_build_video()  # impor di sini agar run kosong tetap cepat
 
     for n, item in enumerate(items, 1):
         try:
@@ -755,8 +779,10 @@ def main():
 
     payload = os.getenv("UPDATE_JSON", "").strip()
     if payload and payload != "null":
+        # Mode webhook: pesan dikirim oleh Cloudflare Worker lewat repository_dispatch
         updates = [json.loads(payload)]
     else:
+        # Mode polling (tanpa webhook)
         updates = tg(
             "getUpdates",
             data={"timeout": POLL_TIMEOUT, "allowed_updates": json.dumps(["message"])},
@@ -764,6 +790,7 @@ def main():
         if not updates:
             print("Tidak ada pesan baru.")
             return
+        # Tandai sudah dibaca SEBELUM diproses, agar tidak terulang jika error
         last_id = max(u["update_id"] for u in updates)
         tg("getUpdates", data={"offset": last_id + 1, "timeout": 0})
 
