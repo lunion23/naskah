@@ -193,9 +193,10 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
         except Exception as e:
             print(f"[!] Musik dilewati: {e}")
     mix = workdir / "mix.wav"
-    audio.write_audiofile(str(mix), fps=44100, logger=None)
+    audio.set_duration(total).write_audiofile(str(mix), fps=44100, logger=None)
 
     html = make_page(item["title"], words, total, item.get("label"))
     out = js_video.render_html_to_mp4(html, total, mix, out_path, workdir)
     safe_export(item["title"], sentences, [c.duration for c in clips], all_marks, total, out)
     return out
+  
