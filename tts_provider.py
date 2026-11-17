@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -56,12 +57,24 @@ def _get_audio_duration(audio_path: str) -> float:
     except Exception:
         pass
 
-    # Estimasi cadangan jika ffprobe tidak tersedia
     try:
         size_bytes = os.path.getsize(audio_path)
         return max(0.5, size_bytes / 16000.0)
     except Exception:
         return 1.0
+
+
+def _build_mark(word: str, start_sec: float, end_sec: float) -> dict:
+    """Membuat dict timestamp kata yang kompatibel dengan semua parser subtitle."""
+    dur_sec = max(0.01, end_sec - start_sec)
+    return {
+        "word": word,
+        "text": word,
+        "start": round(start_sec, 3),
+        "end": round(end_sec, 3),
+        "offset": int(round(start_sec * 10_000_000)),
+        "duration": int(round(dur_sec * 10_000_000)),
+    }
 
 
 def _proportional_marks(text: str, total_duration: float) -> list[dict]:
@@ -77,13 +90,7 @@ def _proportional_marks(text: str, total_duration: float) -> list[dict]:
     cursor = 0.0
     for w, weight in zip(words, weights):
         seg_dur = (weight / total_weight) * total_duration
-        marks.append(
-            {
-                "word": w,
-                "start": round(cursor, 3),
-                "end": round(cursor + seg_dur, 3),
-            }
-        )
+        marks.append(_build_mark(w, cursor, cursor + seg_dur))
         cursor += seg_dur
 
     if marks:
@@ -97,7 +104,7 @@ def _elevenlabs_tts(
     voice_id: str | None = None,
     model_id: str | None = None,
 ) -> tuple[str, list[dict]]:
-    """Sintesis suara memakai ElevenLabs REST API (tanpa bergantung versi SDK)."""
+    """Sintesis suara memakai ElevenLabs REST API."""
     api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("ELEVENLABS_API_KEY kosong atau belum diatur.")
@@ -184,13 +191,7 @@ async def _edge_tts_async(
         elif ctype == "WordBoundary":
             offset_sec = chunk["offset"] / 10_000_000.0
             dur_sec = chunk["duration"] / 10_000_000.0
-            marks.append(
-                {
-                    "word": chunk["text"],
-                    "start": round(offset_sec, 3),
-                    "end": round(offset_sec + dur_sec, 3),
-                }
-            )
+            marks.append(_build_mark(chunk["text"], offset_sec, offset_sec + dur_sec))
 
     with open(out_path, "wb") as f:
         f.write(audio_chunks)
@@ -212,11 +213,15 @@ def _edge_tts(
         or os.getenv("VOICE", "").strip()
         or "id-ID-ArdiNeural"
     )
-    # Jika variabel VOICE berisi ID ElevenLabs (bukan format id-ID-...), pakai default ArdiNeural
     if not re.match(r"^[a-z]{2}-[A-Z]{2}-", selected_voice):
         selected_voice = "id-ID-ArdiNeural"
 
-    selected_rate = rate or os.getenv("EDGE_RATE", "").strip() or os.getenv("RATE", "").strip() or "+0%"
+    selected_rate = (
+        rate
+        or os.getenv("EDGE_RATE", "").strip()
+        or os.getenv("RATE", "").strip()
+        or "+0%"
+    )
 
     try:
         loop = asyncio.get_running_loop()
@@ -224,7 +229,6 @@ def _edge_tts(
         loop = None
 
     if loop and loop.is_running():
-        # Aman jika dipanggil dari dalam event loop async (seperti python-telegram-bot / aiogram)
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -244,24 +248,36 @@ def _edge_tts(
     return str(out_path), marks
 
 
-def make_voice(
+def synthesize(
     text: str,
-    out_path: str,
+    out_path: str | Path | None = None,
     voice: str | None = None,
     rate: str | None = None,
     provider: str | None = None,
     pitch: str = "+0Hz",
+    **kwargs,
 ) -> tuple[str, list[dict]]:
     """
-    Fungsi utama pembuat suara dengan AUTO-FALLBACK otomatis:
-    Jika provider = elevenlabs lalu gagal (error 401/402/429/kuota habis/timeout),
-    otomatis beralih ke edge-tts tanpa menghentikan render video.
+    Fungsi utama TTS (dipanggil oleh js_video.py, auto_shorts.py, react_video.py, t10_video.py)
+    dengan AUTO-FALLBACK otomatis dari ElevenLabs ke Edge TTS saat error 401/402/429.
     """
     global _ELEVENLABS_DISABLED_SESSION, _LAST_PROVIDER_USED, _FALLBACK_REASON
 
     clean_text = (text or "").strip()
     if not clean_text:
         raise ValueError("Teks narasi kosong.")
+
+    target_path = (
+        out_path
+        or kwargs.get("output_path")
+        or kwargs.get("out_file")
+        or kwargs.get("path")
+    )
+    if target_path is None:
+        fd, tmp_name = tempfile.mkstemp(suffix=".mp3", prefix="tts_")
+        os.close(fd)
+        target_path = tmp_name
+    target_path = str(target_path)
 
     chosen = (
         provider
@@ -274,7 +290,7 @@ def make_voice(
         try:
             audio_file, marks = _elevenlabs_tts(
                 text=clean_text,
-                out_path=out_path,
+                out_path=target_path,
                 voice_id=voice,
             )
             _LAST_PROVIDER_USED = "elevenlabs"
@@ -282,15 +298,13 @@ def make_voice(
         except Exception as err:
             err_msg = str(err)
             print(f"[TTS AUTO-FALLBACK] ElevenLabs gagal ({err_msg}) -> Beralih ke Edge TTS...")
-            # Nonaktifkan ElevenLabs untuk sisa kalimat di video ini jika error kuota/auth
             if any(code in err_msg for code in ("401", "402", "429", "quota", "API_KEY")):
                 _ELEVENLABS_DISABLED_SESSION = True
                 _FALLBACK_REASON = err_msg
 
-    # Jalankan Edge TTS (sebagai provider utama maupun fallback otomatis)
     audio_file, marks = _edge_tts(
         text=clean_text,
-        out_path=out_path,
+        out_path=target_path,
         voice=voice,
         rate=rate,
         pitch=pitch,
@@ -299,20 +313,22 @@ def make_voice(
     return audio_file, marks
 
 
+# Alias agar kompatibel dengan semua pemanggilan lama maupun baru
+make_voice = synthesize
+
+
 def synthesize_many(
     items: list,
-    out_dir: str,
+    out_dir: str | Path,
     prefix: str = "seg",
     voice: str | None = None,
     rate: str | None = None,
     provider: str | None = None,
 ) -> list[dict]:
-    """
-    Memproses banyak segmen narasi sekaligus dengan auto-fallback.
-    Mendukung input berupa list[str] maupun list[dict] (dengan key 'text' atau 'narasi').
-    """
+    """Memproses banyak segmen narasi sekaligus dengan auto-fallback."""
     reset_tts_session()
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    out_dir_path = Path(out_dir)
+    out_dir_path.mkdir(parents=True, exist_ok=True)
     results = []
 
     for idx, item in enumerate(items, start=1):
@@ -325,8 +341,8 @@ def synthesize_many(
             item_voice = voice
             item_rate = rate
 
-        out_file = str(Path(out_dir) / f"{prefix}_{idx:02d}.mp3")
-        audio_path, marks = make_voice(
+        out_file = str(out_dir_path / f"{prefix}_{idx:02d}.mp3")
+        audio_path, marks = synthesize(
             text=text,
             out_path=out_file,
             voice=item_voice,
