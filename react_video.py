@@ -1,14 +1,16 @@
 """
-Naskah teks -> video animasi bergaya React v2 (Kinetic Editorial + Visual Scenes) yang SINKRON dengan suara.
+Naskah teks -> video animasi bergaya React v3 (Kinetic Editorial + Dynamic SVG Scenes) yang SINKRON dengan suara.
 
-Peningkatan visual:
-  1. Multi-Scene Visual Cards di area atas: otomatis mendeteksi angka besar (Stat Card),
-     poin berurutan (Step Card), atau kutipan/highlight penting (Insight Card) dari tiap kalimat.
-  2. Kinetic Karaoke Typography di area tengah: kata aktif menyala dalam pil warna aksen dengan
-     efek spring pop & glow, ditambah pratinjau kata berikutnya agar nyaman dibaca.
-  3. Latar Dinamis Berlapis: grid halus, partikel cahaya mengambang, dan orb gradien berdenyut.
-  4. Header Kategori + Penghitung Adegan & Indikator Audio Equalizer aktif saat narator berbicara.
-  5. Fix durasi CompositeAudioClip (.set_duration(total)) agar bebas error MoviePy 1.0.3.
+Peningkatan v3:
+  1. Penghitung Poin Akurat: Kata urutan ("Pertama", "Kedua", dst.) selalu mulai dari POIN 01,
+     tidak bergeser oleh kalimat pembuka/statistik sebelumnya.
+  2. Ikon Vektor (SVG) Tematik Otomatis: Mendeteksi topik tiap kalimat (mesin/oli, suhu/radiator,
+     bahan bakar/filter, kecepatan/pengemudi, biaya/uang, waktu/jadwal, statistik, dll.) dan
+     menampilkan ikon vektor tajam dengan animasi denyut halus di kartu atas.
+  3. Ringkasan Visual Inti (Tidak Redundan): Kartu atas menampilkan ringkasan frasa inti (3-6 kata)
+     yang melengkapi teks karaoke di bawah, bukan mengulang kalimat mentah.
+  4. Kinetic Karaoke Typography + Pratinjau Kalimat Berikutnya + Audio Equalizer Aktif.
+  5. Fix durasi CompositeAudioClip (.set_duration(total)) untuk MoviePy 1.0.3.
 """
 
 import json
@@ -28,11 +30,11 @@ MAX_SECONDS = 90
 LABEL = os.getenv("REACT_LABEL", "FAKTA & EDUKASI")
 PALETTES = [
     # (bg1, bg2, accent, accentSoft, cardBg)
-    ("#0f172a", "#1e3a8a", "#fbbf24", "rgba(251, 191, 36, 0.18)", "rgba(15, 23, 42, 0.62)"),
-    ("#022c22", "#065f46", "#34d399", "rgba(52, 211, 153, 0.18)", "rgba(2, 44, 34, 0.62)"),
-    ("#1c0a05", "#7c2d12", "#fb923c", "rgba(251, 146, 60, 0.18)", "rgba(28, 10, 5, 0.62)"),
-    ("#1e1b4b", "#4c1d95", "#f472b6", "rgba(244, 114, 182, 0.18)", "rgba(30, 27, 75, 0.62)"),
-    ("#082f49", "#0369a1", "#38bdf8", "rgba(56, 189, 248, 0.18)", "rgba(8, 47, 73, 0.62)"),
+    ("#0f172a", "#1e3a8a", "#fbbf24", "rgba(251, 191, 36, 0.18)", "rgba(15, 23, 42, 0.65)"),
+    ("#022c22", "#065f46", "#34d399", "rgba(52, 211, 153, 0.18)", "rgba(2, 44, 34, 0.65)"),
+    ("#1c0a05", "#7c2d12", "#fb923c", "rgba(251, 146, 60, 0.18)", "rgba(28, 10, 5, 0.65)"),
+    ("#1e1b4b", "#4c1d95", "#f472b6", "rgba(244, 114, 182, 0.18)", "rgba(30, 27, 75, 0.65)"),
+    ("#082f49", "#0369a1", "#38bdf8", "rgba(56, 189, 248, 0.18)", "rgba(8, 47, 73, 0.65)"),
 ]
 
 PAGE = """<!doctype html>
@@ -92,6 +94,63 @@ function getActiveSentence(t) {
 
 function isSpeaking(t) {
   return DATA.words.some((w) => t >= w.s - 0.04 && t <= w.e + 0.04);
+}
+
+// Komponen Ikon Vektor SVG Tajam Sesuai Tema Kalimat
+function TopicSvg(props) {
+  const kind = props.kind || "spark";
+  const color = props.color || ACC;
+  const strokeProps = {
+    fill: "none", stroke: color, strokeWidth: 3.2,
+    strokeLinecap: "round", strokeLinejoin: "round",
+  };
+  let paths = [];
+  if (kind === "gear") {
+    paths = [
+      h("circle", { key: "c1", cx: 24, cy: 24, r: 7, ...strokeProps }),
+      h("path", { key: "p1", d: "M24 5v4M24 39v4M5 24h4M39 24h4M10.5 10.5l2.8 2.8M34.7 34.7l2.8 2.8M37.5 10.5l-2.8 2.8M13.3 34.7l-2.8 2.8", ...strokeProps }),
+      h("circle", { key: "c2", cx: 24, cy: 24, r: 14, ...strokeProps, strokeDasharray: "6 5" }),
+    ];
+  } else if (kind === "drop") {
+    paths = [
+      h("path", { key: "p1", d: "M24 6C24 6 11 20.2 11 29a13 13 0 0 0 26 0C37 20.2 24 6 24 6z", ...strokeProps }),
+      h("path", { key: "p2", d: "M18 30a6 6 0 0 0 6 6", ...strokeProps }),
+    ];
+  } else if (kind === "temp") {
+    paths = [
+      h("path", { key: "p1", d: "M28 27.5V11a4 4 0 0 0-8 0v16.5a8 8 0 1 0 8 0z", ...strokeProps }),
+      h("circle", { key: "c1", cx: 24, cy: 34, r: 3, fill: color }),
+      h("path", { key: "p2", d: "M24 20v11", ...strokeProps }),
+    ];
+  } else if (kind === "shield") {
+    paths = [
+      h("path", { key: "p1", d: "M24 5L9 11v11c0 10.2 6.4 19.6 15 22 8.6-2.4 15-11.8 15-22V11L24 5z", ...strokeProps }),
+      h("path", { key: "p2", d: "M17.5 24l4.5 4.5 9-9", ...strokeProps }),
+    ];
+  } else if (kind === "speed") {
+    paths = [
+      h("path", { key: "p1", d: "M8 31a16 16 0 1 1 32 0", ...strokeProps }),
+      h("path", { key: "p2", d: "M24 31l8-11", ...strokeProps }),
+      h("circle", { key: "c1", cx: 24, cy: 31, r: 3, fill: color }),
+    ];
+  } else if (kind === "chart") {
+    paths = [
+      h("path", { key: "p1", d: "M8 38h32", ...strokeProps }),
+      h("rect", { key: "r1", x: 11, y: 24, width: 6, height: 14, rx: 2, ...strokeProps }),
+      h("rect", { key: "r2", x: 21, y: 16, width: 6, height: 22, rx: 2, ...strokeProps }),
+      h("rect", { key: "r3", x: 31, y: 9, width: 6, height: 29, rx: 2, ...strokeProps }),
+    ];
+  } else if (kind === "clock") {
+    paths = [
+      h("circle", { key: "c1", cx: 24, cy: 24, r: 17, ...strokeProps }),
+      h("path", { key: "p1", d: "M24 14v10l7 4", ...strokeProps }),
+    ];
+  } else {
+    paths = [
+      h("path", { key: "p1", d: "M24 6l4.2 11.8L40 22l-11.8 4.2L24 38l-4.2-11.8L8 22l11.8-4.2L24 6z", ...strokeProps }),
+    ];
+  }
+  return h("svg", { width: 52, height: 52, viewBox: "0 0 48 48" }, paths);
 }
 
 function Background(props) {
@@ -191,18 +250,19 @@ function VisualFocusCard(props) {
   if (!active) return null;
   const s = active.item;
   const localT = t - s.start;
-  const enter = easeOut(localT / 0.32);
-  const scale = 0.92 + 0.08 * pop(localT / 0.45);
+  const enter = easeOut(localT / 0.30);
+  const scale = 0.93 + 0.07 * pop(localT / 0.42);
+  const iconPulse = 1 + 0.06 * Math.sin(t * 4.5);
 
   return h("div", {
     style: {
       position: "absolute", left: 64, top: 360, width: 952, height: 390, boxSizing: "border-box",
-      borderRadius: 42, padding: "38px 44px",
+      borderRadius: 42, padding: "36px 44px",
       background: CARD_BG,
       border: "2.5px solid rgba(255,255,255,0.18)",
       boxShadow: "0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.2)",
       opacity: enter,
-      transform: "translateY(" + ((1 - enter) * 32) + "px) scale(" + scale + ")",
+      transform: "translateY(" + ((1 - enter) * 30) + "px) scale(" + scale + ")",
       display: "flex", flexDirection: "column", justifyContent: "space-between",
     },
   },
@@ -213,49 +273,52 @@ function VisualFocusCard(props) {
     },
       h("div", {
         style: {
-          display: "inline-flex", alignItems: "center", gap: 12,
-          padding: "8px 20px", borderRadius: 16,
+          display: "inline-flex", alignItems: "center", gap: 14,
+          padding: "10px 22px", borderRadius: 18,
           background: "rgba(255,255,255,0.1)", color: ACC,
-          fontSize: 24, fontWeight: 800, letterSpacing: 2,
+          fontSize: 25, fontWeight: 800, letterSpacing: 2,
         },
-      }, s.icon + " " + s.badge),
+      }, s.badge),
       h("div", {
         style: {
-          width: 14, height: 14, borderRadius: "50%", background: ACC,
-          boxShadow: "0 0 18px " + ACC,
+          width: 84, height: 84, borderRadius: 24,
+          background: ACC_SOFT, border: "2px solid " + ACC,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transform: "scale(" + iconPulse + ")",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
         },
-      })
+      }, h(TopicSvg, { kind: s.svgKind, color: ACC }))
     ),
     s.stat ? h("div", {
       style: {
-        display: "flex", alignItems: "baseline", gap: 22, marginTop: 8,
+        display: "flex", flexDirection: "column", gap: 8,
       },
     },
       h("div", {
         style: {
-          fontFamily: FONT_NUM, fontSize: 108, fontWeight: 700, lineHeight: 1,
+          fontFamily: FONT_NUM, fontSize: 106, fontWeight: 700, lineHeight: 1,
           color: ACC, textShadow: "0 6px 24px rgba(0,0,0,0.4)",
         },
       }, s.stat),
       h("div", {
         style: {
-          fontSize: 36, fontWeight: 700, lineHeight: 1.25, color: "#f8fafc",
+          fontSize: 34, fontWeight: 700, lineHeight: 1.22, color: "#f8fafc",
         },
-      }, s.headline)
+      }, s.summary)
     ) : h("div", {
       style: {
-        fontSize: 44, fontWeight: 800, lineHeight: 1.26, color: "#ffffff",
+        fontSize: 48, fontWeight: 800, lineHeight: 1.24, color: "#ffffff",
       },
-    }, s.headline),
+    }, s.summary),
     h("div", {
       style: {
-        fontSize: 28, fontWeight: 600, color: "rgba(255,255,255,0.75)",
-        borderTop: "1.5px solid rgba(255,255,255,0.12)", paddingTop: 18,
+        fontSize: 26, fontWeight: 700, color: "rgba(255,255,255,0.72)",
+        borderTop: "1.5px solid rgba(255,255,255,0.12)", paddingTop: 16,
         display: "flex", justifyContent: "space-between", alignItems: "center",
       },
     },
-      h("span", null, s.subline),
-      h("span", { style: { color: ACC, fontWeight: 800 } }, "● LIVE")
+      h("span", null, s.tagLine),
+      h("span", { style: { color: ACC, fontWeight: 800, letterSpacing: 1.5 } }, "● FOKUS ADEGAN")
     )
   );
 }
@@ -405,42 +468,92 @@ function draw(t) {
 }
 </script></body></html>"""
 
+ORDINAL_MAP = {
+    "pertama": 1,
+    "kedua": 2,
+    "ketiga": 3,
+    "keempat": 4,
+    "kelima": 5,
+    "keenam": 6,
+    "ketujuh": 7,
+    "kedelapan": 8,
+}
 
-def _extract_sentence_visual(sentence: str, idx: int, total: int) -> dict:
-    """Bangun kartu visual otomatis dari isi tiap kalimat agar tiap adegan punya fokus visual berbeda."""
+
+def _detect_svg_kind(text: str) -> tuple[str, str]:
+    """Pilih ikon vektor SVG dan label kategori mikro berdasarkan kata kunci kalimat."""
+    low = text.lower()
+    if any(k in low for k in ("oli", "pelumas", "solar", "bahan bakar", "air", "cairan")):
+        return "drop", "SISTEM FLUIDA & PELUMASAN"
+    if any(k in low for k in ("suhu", "panas", "radiator", "pendingin", "dingin")):
+        return "temp", "KONTROL SUHU MESIN"
+    if any(k in low for k in ("filter", "bersih", "kotoran", "lindungi", "lindung", "aman", "cegah")):
+        return "shield", "PROTEKSI KOMPONEN"
+    if any(k in low for k in ("pengemudi", "akselerasi", "putaran", "kecepatan", "tanjakan", "mengemudi")):
+        return "speed", "TEKNIK OPERASIONAL"
+    if any(k in low for k in ("biaya", "hemat", "persen", "ekonomi", "operasional", "efisien")):
+        return "chart", "EFISIENSI & PERFORMA"
+    if any(k in low for k in ("menit", "jam", "hari", "waktu", "jadwal", "berkala", "rutin")):
+        return "clock", "DISIPLIN WAKTU & JADWAL"
+    if any(k in low for k in ("mesin", "injektor", "katup", "komponen", "armada", "bus", "truk")):
+        return "gear", "MEKANIKAL ARMADA"
+    return "spark", "POIN INTI PEMBAHASAN"
+
+
+def _make_concise_summary(body: str) -> str:
+    """Ambil frasa inti 4-6 kata sebelum tanda koma atau kata sambung agar ringkas & tidak mengulang karaoke."""
+    clause = re.split(r"[,;:]|(?:agar|supaya|sebelum|karena|sehingga|yang|tanpa|dengan)", body, maxsplit=1)[0]
+    words = [w.strip(".,!?;:") for w in clause.split() if w.strip(".,!?;:")]
+    if len(words) < 3:
+        words = [w.strip(".,!?;:") for w in body.split() if w.strip(".,!?;:")][:6]
+    else:
+        words = words[:6]
+    phrase = " ".join(words)
+    return phrase[0].upper() + phrase[1:] if phrase else body[:40]
+
+
+def _extract_sentence_visual(sentence: str, idx: int, total: int, step_counter: list) -> dict:
+    """Bangun kartu visual dengan penomoran poin akurat, ikon SVG tematik, dan ringkasan inti."""
     clean = " ".join(sentence.strip().split())
     m_num = re.search(
         r"([0-9]+(?:[.,][0-9]+)?\s?(?:%|persen|juta|miliar|triliun|km|tahun|bulan|hari|jam|menit|detik|kali))",
         clean,
         re.I,
     )
-    m_ord = re.match(r"^(Pertama|Kedua|Ketiga|Keempat|Kelima|Terakhir)[,:]?\s*(.+)$", clean, re.I)
-
-    icons = ["💡", "⚙️", "🛡️", "📊", "🚀", "🔧", "📌", "✅"]
-    icon = icons[idx % len(icons)]
+    m_ord = re.match(
+        r"^(Pertama|Kedua|Ketiga|Keempat|Kelima|Keenam|Ketujuh|Kedelapan|Terakhir)[,:]?\s*(.+)$",
+        clean,
+        re.I,
+    )
 
     if idx == 0:
         badge = "PEMBUKA • HOOK"
-    elif idx == total - 1 and total > 1:
+    elif idx == total - 1 and total > 1 and not m_ord:
         badge = "KESIMPULAN UTAMA"
     elif m_ord:
-        badge = f"POIN {idx:02d} • {m_ord.group(1).upper()}"
+        word_ord = m_ord.group(1).lower()
+        if word_ord in ORDINAL_MAP:
+            step_num = ORDINAL_MAP[word_ord]
+            step_counter[0] = step_num
+        else:
+            step_counter[0] += 1
+            step_num = step_counter[0]
+        badge = f"POIN {step_num:02d} • {m_ord.group(1).upper()}"
+    elif m_num:
+        badge = "DATA & FAKTA KUNCI"
     else:
-        badge = f"POIN PENTING #{idx + 1}"
+        badge = f"SOROTAN #{idx + 1}"
 
     body = m_ord.group(2).strip() if m_ord else clean
-    words = body.split()
-    headline = " ".join(words[:10]) + ("..." if len(words) > 10 else "")
-    subline = " ".join(words[10:20]) + ("..." if len(words) > 20 else "")
-    if not subline:
-        subline = f"Bagian {idx + 1} dari {total} pembahasan"
+    svg_kind, tag_line = _detect_svg_kind(clean)
+    summary = _make_concise_summary(body)
 
     return {
-        "icon": icon,
         "badge": badge,
+        "svgKind": svg_kind,
         "stat": m_num.group(1).upper() if m_num else "",
-        "headline": headline,
-        "subline": subline,
+        "summary": summary,
+        "tagLine": tag_line,
     }
 
 
@@ -472,10 +585,11 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
 
     words, sentences_meta, t0 = [], [], 0.0
     total_sent = len(sentences)
+    step_counter = [0]
     for idx, (sentence, ac, marks) in enumerate(zip(sentences, clips, all_marks)):
         s_start = round(t0, 3)
         s_end = round(t0 + ac.duration, 3)
-        vis = _extract_sentence_visual(sentence, idx, total_sent)
+        vis = _extract_sentence_visual(sentence, idx, total_sent, step_counter)
         sentences_meta.append({
             "start": s_start,
             "end": s_end,
@@ -501,4 +615,3 @@ def build_react_video(item: dict, out_path: Path, workdir: Path) -> Path:
     out = js_video.render_html_to_mp4(html, total, mix, out_path, workdir)
     safe_export(item["title"], sentences, [c.duration for c in clips], all_marks, total, out)
     return out
-  
