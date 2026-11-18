@@ -161,21 +161,35 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 
 # ---------------- util ----------------
 def parse_directives(code: str):
-    """Ambil // durasi: N dan // narasi: teks dari baris komentar."""
-    duration, narration = None, []
+    """Ambil // durasi: N, // narasi: teks, // judul: teks, dan // sfx: detik:jenis dari baris komentar."""
+    duration, narration, sfx_events, title = None, [], [], None
     for line in code.splitlines():
         m = re.match(r"^\s*(?://|<!--)\s*(?:durasi|duration)\s*:\s*([0-9]+(?:\.[0-9]+)?)", line, re.I)
         if m and duration is None:
             duration = float(m.group(1))
             continue
+        m = re.match(r"^\s*(?://|<!--)\s*(?:judul|title)\s*:\s*(.+?)\s*(?:-->)?\s*$", line, re.I)
+        if m and title is None:
+            title = m.group(1)
+            continue
         m = re.match(r"^\s*(?://|<!--)\s*(?:narasi|narration|voice)\s*:\s*(.+?)\s*(?:-->)?\s*$", line, re.I)
         if m:
             narration.append(m.group(1))
-    return duration, (" ".join(narration) or None)
+            continue
+        m = re.match(r"^\s*(?://|<!--)\s*sfx\s*:\s*(.+?)\s*(?:-->)?\s*$", line, re.I)
+        if m:
+            for item in m.group(1).split(","):
+                parts = [p.strip() for p in item.split(":")]
+                if len(parts) >= 2:
+                    try:
+                        sfx_events.append((float(parts[0]), parts[1].lower()))
+                    except ValueError:
+                        pass
+    return duration, (" ".join(narration) or None), sfx_events, title
 
 
 def build_html(code: str, scenes=None, subtitles=None) -> str:
-    if re.search(r"<\s*(!doctype|html|body|canvas|div|svg)\b", code[:3000], re.I):
+    if re.search(r"<\s*(!doctype|html|body|canvas|div|svg)", code[:3000], re.I):
         return code
     html = (
         TEMPLATE
@@ -184,7 +198,7 @@ def build_html(code: str, scenes=None, subtitles=None) -> str:
         .replace("%(scenes_json)s", json.dumps(scenes or [], ensure_ascii=False))
         .replace("%(subtitles_json)s", json.dumps(subtitles or [], ensure_ascii=False))
     )
-    return html.replace("%(code)s", code.replace("</script", "<\\/script"), 1)
+    return html.replace("%(code)s", code.replace("</script", "<\/script"), 1)
 
 
 def ffmpeg_bin() -> str:
@@ -251,7 +265,8 @@ def _concat_audios(audio_paths: list[Path], out_audio: Path):
     """Gabungkan klip suara tiap scene menjadi satu trek narasi."""
     list_file = out_audio.parent / "concat_list.txt"
     lines = [f"file '{p.resolve().as_posix()}'" for p in audio_paths]
-    list_file.write_text("\n".join(lines), encoding="utf-8")
+    list_file.write_text("
+".join(lines), encoding="utf-8")
     subprocess.run(
         [ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_audio)],
         check=True,
@@ -318,6 +333,97 @@ def _pick_or_make_bgm(workdir: Path, bgm_path: Path = None) -> Path:
     return _generate_ambient_wav(workdir / "ambient_bgm.wav")
 
 
+def _generate_js_sfx_wav(path: Path, total_seconds: float, sfx_events: list[tuple[float, str]] = None, sr: int = 22050) -> Path:
+    """Buat trek efek suara dinamis (whoosh, pop, slap/plak, buzz/nyamuk, boing) untuk video mode /js."""
+    total_samples = int(total_seconds * sr)
+    buf = [0.0] * total_samples
+    rng = random.Random(101)
+
+    events = list(sfx_events) if sfx_events else []
+    if not events:
+        t_cur = 0.2
+        presets = ["pop", "whoosh", "slap", "boing"]
+        idx = 0
+        while t_cur < total_seconds - 0.5:
+            events.append((t_cur, presets[idx % len(presets)]))
+            t_cur += 3.5
+            idx += 1
+
+    for st, kind in events:
+        start_i = int(st * sr)
+        if start_i < 0 or start_i >= total_samples:
+            continue
+
+        if kind in ("slap", "plak", "hit", "bonk"):
+            s_len = int(0.18 * sr)
+            for k in range(s_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                kt = k / sr
+                env = math.exp(-kt * 28.0)
+                noise = rng.uniform(-1.0, 1.0)
+                punch = math.sin(2.0 * math.pi * (160.0 * math.exp(-kt * 18.0)) * kt)
+                buf[pos] += (noise * 0.55 + punch * 0.55) * env
+
+        elif kind in ("buzz", "nyamuk", "zap"):
+            b_len = int(0.85 * sr)
+            for k in range(b_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                kt = k / sr
+                env = math.sin(math.pi * (k / b_len)) ** 0.7
+                freq = 440.0 + 95.0 * math.sin(2.0 * math.pi * 7.5 * kt)
+                saw = ((freq * kt) % 1.0) * 2.0 - 1.0
+                buf[pos] += saw * env * 0.26
+
+        elif kind in ("boing", "fail", "zonk"):
+            g_len = int(0.45 * sr)
+            for k in range(g_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                kt = k / sr
+                env = math.exp(-kt * 5.5)
+                freq = 260.0 + 180.0 * math.sin(2.0 * math.pi * 12.0 * kt) * math.exp(-kt * 4.0)
+                buf[pos] += math.sin(2.0 * math.pi * freq * kt) * env * 0.35
+
+        elif kind in ("whoosh", "swipe"):
+            w_len = int(0.32 * sr)
+            for k in range(w_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                u = k / w_len
+                env = math.sin(math.pi * u) ** 1.3
+                noise = rng.uniform(-1.0, 1.0)
+                sweep = math.sin(2.0 * math.pi * (170.0 + 480.0 * u) * (k / sr))
+                buf[pos] += (noise * 0.24 + sweep * 0.16) * env
+
+        else:
+            p_len = int(0.22 * sr)
+            for k in range(p_len):
+                pos = start_i + k
+                if pos >= total_samples:
+                    break
+                kt = k / sr
+                env = math.exp(-kt * 20.0)
+                freq = 520.0 + 380.0 * min(kt * 12.0, 1.0)
+                buf[pos] += math.sin(2.0 * math.pi * freq * kt) * env * 0.32
+
+    frames = bytearray()
+    for v in buf:
+        s = int(max(-1.0, min(1.0, v)) * 32767)
+        frames.extend(struct.pack("<hh", s, s))
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(bytes(frames))
+    return path
+
+
 # ---------------- render ----------------
 def render_frames(html: str, seconds: float, frames_dir: Path):
     from playwright.sync_api import sync_playwright
@@ -364,7 +470,6 @@ def _generate_scene_sfx_wav(path: Path, timed_scenes: list[dict], total_seconds:
     for idx, sc in enumerate(timed_scenes):
         st = float(sc.get("start", 0.0))
         start_i = int(st * sr)
-        # 1) Soft whoosh (0.28s) pada perpindahan adegan
         if idx > 0:
             w_len = int(0.28 * sr)
             for k in range(w_len):
@@ -377,7 +482,6 @@ def _generate_scene_sfx_wav(path: Path, timed_scenes: list[dict], total_seconds:
                 sweep = math.sin(2.0 * math.pi * (180.0 + 420.0 * u) * (k / sr))
                 buf[pos] += (noise * 0.16 + sweep * 0.12) * env
 
-        # 2) Crisp pop / chime (0.22s) saat elemen visual muncul
         p_len = int(0.22 * sr)
         base_f = 587.33 if idx == 0 else (783.99 if idx == len(timed_scenes) - 1 else 659.25)
         for k in range(p_len):
@@ -432,13 +536,27 @@ def encode_video(frames: Path, audio, seconds: float, out_path: Path, bgm_path: 
             filters.append(f"[{bgm_idx}:a]volume=0.12[bgm]")
             mix_inputs.append("[bgm]")
         if has_sfx:
-            filters.append(f"[{sfx_idx}:a]volume=0.35[sfx]")
+            filters.append(f"[{sfx_idx}:a]volume=0.45[sfx]")
             mix_inputs.append("[sfx]")
         if len(mix_inputs) > 1:
             filters.append(f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[aout]")
             cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
         else:
             cmd += ["-c:a", "aac", "-b:a", "160k", "-af", "apad"]
+    elif has_bgm or has_sfx:
+        filters = []
+        mix_inputs = []
+        if has_bgm:
+            filters.append(f"[{bgm_idx}:a]volume=0.22[bgm]")
+            mix_inputs.append("[bgm]")
+        if has_sfx:
+            filters.append(f"[{sfx_idx}:a]volume=0.55[sfx]")
+            mix_inputs.append("[sfx]")
+        if len(mix_inputs) > 1:
+            filters.append(f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest[aout]")
+            cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
+        else:
+            cmd += ["-filter_complex", ";".join(filters), "-map", "0:v", "-map", mix_inputs[0], "-c:a", "aac", "-b:a", "160k"]
 
     cmd += ["-movflags", "+faststart", "-t", f"{seconds:.2f}", str(out_path)]
     subprocess.run(cmd, check=True)
@@ -463,12 +581,15 @@ def render_html_to_mp4(
     return out_path
 
 
-def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
-    """Mode tunggal: kode JS/HTML -> MP4 (dilengkapi BGM otomatis)."""
-    workdir.mkdir(parents=True, exist_ok=True)
-    duration, narration = parse_directives(code)
+def build_js_video(code: str, out_path: Path, workdir: Path, title: str = "Video JS") -> Path:
+    """Mode tunggal: kode JS/HTML -> MP4 (dilengkapi BGM, SFX, dan ekspor file subtitle mentah)."""
+    from subtitles_export import safe_export
 
-    audio, audio_len = None, None
+    workdir.mkdir(parents=True, exist_ok=True)
+    duration, narration, sfx_events, parsed_title = parse_directives(code)
+    video_title = parsed_title or title
+
+    audio, audio_len, marks = None, None, []
     subtitles = []
     if narration:
         audio = workdir / "narasi.mp3"
@@ -484,7 +605,15 @@ def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
     seconds = duration or ((audio_len + 0.6) if audio_len else DEFAULT_SECONDS)
     seconds = max(1.0, min(seconds, MAX_SECONDS))
     bgm = _pick_or_make_bgm(workdir)
-    return render_html_to_mp4(build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir, bgm_path=bgm)
+    sfx = _generate_js_sfx_wav(workdir / "js_sfx.wav", seconds, sfx_events=sfx_events)
+    res = render_html_to_mp4(
+        build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir, bgm_path=bgm, sfx_path=sfx
+    )
+
+    if narration and audio_len:
+        safe_export(video_title, [narration], [audio_len], [marks], seconds, out_path)
+
+    return res
 
 
 def build_motion_video(
