@@ -81,11 +81,11 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <style>
   html,body{margin:0;background:#060d1f;overflow:hidden;font-family:'Montserrat',sans-serif}
   canvas{display:block}
-  #sub-box{display:none !important;
+  #sub-box{
     position:fixed;left:56px;right:56px;bottom:230px;text-align:center;
     font-size:48px;font-weight:900;line-height:1.35;text-transform:uppercase;
     color:#ffffff;letter-spacing:0.6px;pointer-events:none;z-index:20;
-    display:flex;justify-content:center;align-items:center;
+    display:none;justify-content:center;align-items:center;
   }
   #sub-pill{
     display:inline-block;max-width:96%;
@@ -172,19 +172,6 @@ def parse_directives(code: str):
         if m:
             narration.append(m.group(1))
     return duration, (" ".join(narration) or None)
-
-
-def parse_title(code: str, narration: str = None) -> str:
-    """Ambil // judul: Teks dari komentar awal kode, atau gunakan 5 kata pertama narasi."""
-    for line in code.splitlines():
-        m = re.match(r"^\s*(?://|<!--)\s*(?:judul|title)\s*:\s*(.+?)\s*(?:-->)?\s*$", line, re.I)
-        if m and m.group(1).strip():
-            return m.group(1).strip()
-    if narration:
-        words = narration.split()
-        if words:
-            return " ".join(words[:5])
-    return "Video JS"
 
 
 def build_html(code: str, scenes=None, subtitles=None) -> str:
@@ -476,49 +463,12 @@ def render_html_to_mp4(
     return out_path
 
 
-def _split_narration_for_export(narration: str, audio_len: float, marks: list):
-    """Pecah narasi menjadi kalimat beserta durasi & word marks relatif tiap kalimat untuk SRT/JSON."""
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", narration.strip()) if s.strip()]
-    if not sentences:
-        return [], [], []
-    all_words = narration.split()
-    if marks and len(marks) == len(all_words):
-        out_sents, out_durs, out_marks = [], [], []
-        idx = 0
-        t_cursor = 0.0
-        for i, sent in enumerate(sentences):
-            w_count = len(sent.split())
-            if w_count == 0:
-                continue
-            seg_marks = marks[idx:idx + w_count]
-            if i == len(sentences) - 1 or idx + w_count >= len(marks):
-                seg_end = audio_len
-            else:
-                seg_end = max(t_cursor + 0.05, float(marks[idx + w_count][0]))
-            dur = max(seg_end - t_cursor, 0.05)
-            rel_marks = [(max(0.0, float(a) - t_cursor), max(0.05, float(b) - t_cursor)) for a, b in seg_marks]
-            out_sents.append(sent)
-            out_durs.append(dur)
-            out_marks.append(rel_marks)
-            t_cursor += dur
-            idx += w_count
-        return out_sents, out_durs, out_marks
-
-    weights = [sum(len(w) + 2 for w in s.split()) for s in sentences]
-    total_w = max(sum(weights), 1)
-    out_durs = [audio_len * (w / total_w) for w in weights]
-    return sentences, out_durs, [[] for _ in sentences]
-
-
 def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
-    """Mode tunggal: kode JS/HTML -> MP4 (beserta .srt dan .json bila ada narasi)."""
-    from subtitles_export import safe_export
-
+    """Mode tunggal: kode JS/HTML -> MP4 (dilengkapi BGM otomatis)."""
     workdir.mkdir(parents=True, exist_ok=True)
     duration, narration = parse_directives(code)
-    title = parse_title(code, narration=narration)
 
-    audio, audio_len, marks = None, None, []
+    audio, audio_len = None, None
     subtitles = []
     if narration:
         audio = workdir / "narasi.mp3"
@@ -533,14 +483,8 @@ def build_js_video(code: str, out_path: Path, workdir: Path) -> Path:
 
     seconds = duration or ((audio_len + 0.6) if audio_len else DEFAULT_SECONDS)
     seconds = max(1.0, min(seconds, MAX_SECONDS))
-    res = render_html_to_mp4(build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir)
-
-    if narration and audio_len:
-        exp_sents, exp_durs, exp_marks = _split_narration_for_export(narration, audio_len, marks)
-        if exp_sents:
-            safe_export(title, exp_sents, exp_durs, exp_marks, seconds, out_path)
-
-    return res
+    bgm = _pick_or_make_bgm(workdir)
+    return render_html_to_mp4(build_html(code, subtitles=subtitles), seconds, audio, out_path, workdir, bgm_path=bgm)
 
 
 def build_motion_video(
