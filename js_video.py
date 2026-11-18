@@ -139,7 +139,6 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
     const chunkSize = 3;
     let activeIdx = cur.words.findIndex(w => t >= w.start && t <= w.end);
     if (activeIdx < 0) {
-      // Pilih kata terakhir yang sudah mulai diucapkan agar tidak lompat ke 0 saat jeda napas
       for (let i = cur.words.length - 1; i >= 0; i--) {
         if (t >= cur.words[i].start) { activeIdx = i; break; }
       }
@@ -265,8 +264,7 @@ def _concat_audios(audio_paths: list[Path], out_audio: Path):
     """Gabungkan klip suara tiap scene menjadi satu trek narasi."""
     list_file = out_audio.parent / "concat_list.txt"
     lines = [f"file '{p.resolve().as_posix()}'" for p in audio_paths]
-    list_file.write_text("
-".join(lines), encoding="utf-8")
+    list_file.write_text(chr(10).join(lines), encoding="utf-8")
     subprocess.run(
         [ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_audio)],
         check=True,
@@ -282,7 +280,7 @@ def _generate_ambient_wav(path: Path, duration: float = 16.0, sr: int = 22050) -
         (98.00, 123.47, 146.83, 196.00),   # G
     ]
     seg = duration / 4.0
-    step_dur = 0.25  # 120 BPM eighth-note pulse
+    step_dur = 0.25
     total_samples = int(duration * sr)
     frames = bytearray()
     for i in range(total_samples):
@@ -292,20 +290,17 @@ def _generate_ambient_wav(path: Path, duration: float = 16.0, sr: int = 22050) -
         local_t = t - c_idx * seg
         pad_env = math.sin(math.pi * min(max(local_t / seg, 0.0), 1.0)) ** 0.45
 
-        # Soft warm pad
         pad = 0.0
         for f in chord[:3]:
             pad += math.sin(2.0 * math.pi * f * t)
         pad = (pad / 3.2) * pad_env * 0.42
 
-        # Gentle rhythmic marimba pluck
         step_idx = int(t // step_dur)
         step_t = t - step_idx * step_dur
         pluck_env = math.exp(-step_t * 11.0)
         note_f = chord[step_idx % len(chord)] * 2.0
         pluck = (math.sin(2.0 * math.pi * note_f * t) + 0.25 * math.sin(4.0 * math.pi * note_f * t)) * pluck_env * 0.35
 
-        # Subtle warm bass pulse every 1.0s
         beat_t = t % 1.0
         bass_env = math.exp(-beat_t * 4.5)
         bass = math.sin(2.0 * math.pi * (chord[0] * 0.5) * t) * bass_env * 0.32
